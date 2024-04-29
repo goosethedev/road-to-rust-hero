@@ -1,49 +1,13 @@
+use crate::guess::{Guess, GuessResult, MAX_GUESS, MIN_GUESS};
 use rand::Rng;
-use std::cmp::Ordering;
-use std::io::{self, prelude::*}; // Necessary for pause
+use std::io;
 
-enum GuessResult {
-    Higher,
-    Lower,
-}
-
-struct Guess {
-    value: u32,
-    result: GuessResult,
-}
-
-// Prints a list of guesses, their details and total
-fn print_guesses(guesses: &Vec<Guess>) {
-    println!("Total guesses: {}", guesses.len());
-    for guess in guesses {
-        let value = guess.value;
-        let message = match guess.result {
-            GuessResult::Lower => "too low",
-            GuessResult::Higher => "too high",
-        };
-        println!("- Number {value} was {message}!")
-    }
-    println!();
-}
-
-// Wait for any key to be pressed
-// https://users.rust-lang.org/t/rusts-equivalent-of-cs-system-pause/4494/4
-fn pause(message: &str) {
-    let mut stdin = io::stdin();
-    let mut stdout = io::stdout();
-
-    // We want the cursor to stay at the end of the line,
-    // so we print without a newline and flush manually.
-    write!(stdout, "{message}").unwrap();
-    stdout.flush().unwrap();
-
-    // Read a single byte and discard
-    let _ = stdin.read(&mut [0u8]).unwrap();
-}
+mod guess;
+mod helpers;
 
 fn main() {
     // Setup number to guess
-    let secret_number = rand::thread_rng().gen_range(1..=100);
+    let secret_number = rand::thread_rng().gen_range(MIN_GUESS..=MAX_GUESS);
     // println!("DEBUG: Secret number: {secret_number}");
 
     // List of guesses
@@ -56,9 +20,9 @@ fn main() {
 
         // Print guesses or introduction message
         if guesses.len() == 0 {
-            println!("A random number between 1 and 100 has been generated.\n")
+            println!("A random number between {MIN_GUESS} and {MAX_GUESS} has been generated.\n")
         } else {
-            print_guesses(&guesses);
+            helpers::print_guesses(&guesses);
         }
 
         // Read from user input
@@ -79,36 +43,29 @@ fn main() {
         let guess: u32 = match guess.trim().parse() {
             Ok(num) => num,
             Err(_) => {
-                pause("\nThat doesn't look like a valid number. Press any key to try again...");
+                helpers::pause(
+                    "\nThat doesn't look like a valid number. Press any key to try again...",
+                );
                 continue;
             }
         };
 
-        // Verify guess is between 1-100
-        if guess < 1 || guess > 100 {
-            pause("\nThe number is between 1 and 100. Press any key to try again...");
-            continue;
-        }
-
-        // Compare if smaller, bigger or correct
-        match guess.cmp(&secret_number) {
-            Ordering::Equal => {
-                println!(
-                    "You won in {} guesses! Thanks for playing!",
-                    guesses.len() + 1
-                );
-                break;
-            }
-            diff => {
-                guesses.push(Guess {
-                    value: guess,
-                    result: if diff == Ordering::Less {
-                        GuessResult::Lower
-                    } else {
-                        GuessResult::Higher
-                    },
-                });
-            }
+        // Create guess and compare
+        match Guess::compare(guess, secret_number) {
+            Ok(g) => match g.get_result() {
+                // Player won! Exit the loop
+                GuessResult::Equal => {
+                    println!(
+                        "You won in {} guesses! Thanks for playing!",
+                        guesses.len() + 1
+                    );
+                    break;
+                }
+                // Add to guesses and keep going
+                _ => guesses.push(g),
+            },
+            // Error when mapping the Guess
+            Err(error) => helpers::pause(&error),
         }
     }
 }
