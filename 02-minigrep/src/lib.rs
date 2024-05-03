@@ -1,4 +1,7 @@
-use std::{env, error::Error, fs};
+use config::Config;
+use std::{error::Error, fs};
+
+pub mod config;
 
 pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
     let contents = fs::read_to_string(&config.file_path)?;
@@ -25,36 +28,12 @@ fn search<'a>(query: &str, contents: &'a str, icase: bool) -> Vec<&'a str> {
         .collect::<Vec<&str>>()
 }
 
-pub struct Config {
-    query: String,
-    file_path: String,
-    ignore_case: bool,
-}
-
-impl Config {
-    pub fn build(args: &[String]) -> Result<Self, &'static str> {
-        if args.len() < 3 {
-            return Err("not enough arguments");
-        }
-
-        let query = args[1].clone();
-        let file_path = args[2].clone();
-        let ignore_case = env::var("IGNORE_CASE").is_ok();
-
-        Ok(Self {
-            query,
-            file_path,
-            ignore_case,
-        })
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn one_result() {
+    fn search_gives_one_result() {
         let query = "duct";
         let contents = "\
 rust:
@@ -68,7 +47,7 @@ pick three.";
     }
 
     #[test]
-    fn multiple_results() {
+    fn search_gives_multiple_results() {
         let query = "st";
         let contents = "\
 rust:
@@ -82,7 +61,7 @@ pick three.";
     }
 
     #[test]
-    fn case_sensitive() {
+    fn search_with_case_sensitive() {
         let query = "HARD";
         let contents = "\
 Rust is HaRd
@@ -95,7 +74,7 @@ but not thaaat HARD is it?";
     }
 
     #[test]
-    fn case_insensitive() {
+    fn search_with_case_insensitive() {
         let query = "harD";
         let contents = "\
 Rust is HaRd
