@@ -1,32 +1,31 @@
-use crate::guess::{Guess, GuessResult, MAX_GUESS, MIN_GUESS};
-use rand::Rng;
+use guessing_game::{
+    game::{GuessResult, GuessingGame},
+    helpers,
+};
 use std::io;
 
-mod guess;
-mod helpers;
+pub const MIN_GUESS: u32 = 1;
+pub const MAX_GUESS: u32 = 100;
 
 fn main() {
-    // Setup number to guess
-    let secret_number = rand::thread_rng().gen_range(MIN_GUESS..=MAX_GUESS);
-    // println!("DEBUG: Secret number: {secret_number}");
-
-    // List of guesses
-    let mut guesses: Vec<Guess> = Vec::new();
+    // Create game object
+    let mut game = GuessingGame::new(MIN_GUESS, MAX_GUESS);
 
     loop {
         // Clear the screen
         print!("{}[2J", 27 as char);
         println!("Welcome to Guess the Number!\n");
 
-        // Print guesses or introduction message
-        if guesses.len() == 0 {
+        // Print list of last guesses or introduction message
+        let guess_amount = game.get_guess_amount();
+        if guess_amount == 0 {
             println!("A random number between {MIN_GUESS} and {MAX_GUESS} has been generated.\n")
         } else {
-            helpers::print_guesses(&guesses);
+            game.print_guesses();
         }
 
         // Read from user input
-        println!("Your guess (or 'q' to exit): ");
+        println!("Your guess (or 'q' to exit):");
         let mut guess = String::new();
         io::stdin()
             .read_line(&mut guess)
@@ -35,37 +34,35 @@ fn main() {
         // Quit if "q"
         // Important to trim! stdin also takes the \n character at the end
         if guess.trim().eq("q") {
-            println!("\nBetter luck next time! The number was {secret_number}");
+            println!(
+                "\nBetter luck next time! The number was {}",
+                game.get_secret_number()
+            );
             break;
         }
 
         // Parse to number
-        let guess: u32 = match guess.trim().parse() {
-            Ok(num) => num,
-            Err(_) => {
-                helpers::pause(
-                    "\nThat doesn't look like a valid number. Press any key to try again...",
-                );
-                continue;
-            }
+        let Ok(guess) = guess.trim().parse::<u32>() else {
+            helpers::pause(
+                "\nThat doesn't look like a valid number. Press any key to try again...",
+            );
+            continue;
         };
 
-        // Create guess and compare
-        match Guess::compare(guess, secret_number) {
-            Ok(g) => match g.get_result() {
-                // Player won! Exit the loop
-                GuessResult::Equal => {
-                    println!(
-                        "You won in {} guesses! Thanks for playing!",
-                        guesses.len() + 1
-                    );
-                    break;
-                }
-                // Add to guesses and keep going
-                _ => guesses.push(g),
-            },
-            // Error when mapping the Guess
-            Err(error) => helpers::pause(&error),
+        // Make the guess and check the result
+        let Ok(result) = game.make_guess(guess) else {
+            helpers::pause(
+                &format!("\nNumber out of range. It should be between {MIN_GUESS} and {MAX_GUESS}. Press any key to try again..."),
+            );
+            continue;
+        };
+
+        if result == GuessResult::Equal {
+            println!(
+                "\nYou won using {} guesses! Thanks for playing!",
+                guess_amount + 1
+            );
+            break;
         }
     }
 }

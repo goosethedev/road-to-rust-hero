@@ -1,15 +1,4 @@
-use crate::guess;
 use std::io::{self, prelude::*}; // Necessary for pause
-
-// Prints a list of guesses, their details and total
-pub fn print_guesses(guesses: &Vec<guess::Guess>) {
-    let results_block = guesses
-        .iter()
-        .map(|g| format!("- {g}"))
-        .collect::<Vec<String>>()
-        .join("\n");
-    print!("Total guesses: {}\n{}\n\n", guesses.len(), results_block)
-}
 
 // Wait for any key to be pressed
 // https://users.rust-lang.org/t/rusts-equivalent-of-cs-system-pause/4494/4
