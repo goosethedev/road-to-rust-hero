@@ -1,5 +1,5 @@
 use regex::Regex;
-use std::env;
+use std::{cmp::Ordering, env};
 
 const OPT_IGNORE_CASE: &str = "IGNORE_CASE";
 
@@ -11,14 +11,14 @@ pub struct Config {
 }
 
 impl Config {
-    fn map_option(self: &mut Self, option: String) -> Result<(), String> {
+    fn map_option(&mut self, option: String) -> Result<(), String> {
         match option.as_str() {
             "-i" | "--case-insensitive" => {
                 self.ignore_case = true;
                 Ok(())
             }
             // add more in the future
-            opt => return Err(format!("Unknown option: {opt}")),
+            opt => Err(format!("Unknown option: {opt}")),
         }
     }
 
@@ -42,10 +42,10 @@ impl Config {
         let env_ignore_case: &str = &env::var(OPT_IGNORE_CASE).unwrap_or("0".to_string());
 
         // Ensure args_only has two args
-        if args.len() > 2 {
-            return Err(format!("Unknown argument: {}", &args[2]));
-        } else if args.len() < 2 {
-            return Err(format!("Usage: minigrep [OPTS] PATTERN FILE_PATH"));
+        match args.len().cmp(&2) {
+            Ordering::Greater => return Err(format!("Unknown argument: {}", &args[2])),
+            Ordering::Less => return Err("Usage: minigrep [OPTS] PATTERN FILE_PATH".to_string()),
+            _ => (),
         }
 
         // Default config
