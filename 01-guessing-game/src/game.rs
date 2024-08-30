@@ -6,7 +6,7 @@ pub struct GuessingGame {
     min_value: u32,
     max_value: u32,
     secret_number: u32,
-    guesses: Box<Vec<Guess>>,
+    guesses: Vec<Guess>,
 }
 
 impl GuessingGame {
@@ -17,7 +17,7 @@ impl GuessingGame {
             min_value,
             max_value,
             secret_number,
-            guesses: Box::new(vec![]),
+            guesses: vec![],
         }
     }
 
