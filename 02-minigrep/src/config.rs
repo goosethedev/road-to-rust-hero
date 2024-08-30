@@ -3,6 +3,7 @@ use std::env;
 
 const OPT_IGNORE_CASE: &str = "IGNORE_CASE";
 
+#[derive(PartialEq, Debug)]
 pub struct Config {
     pub query: String,
     pub file_path: String,
@@ -62,12 +63,9 @@ impl Config {
     }
 }
 
-// IMPORTANT: Run these tests sequentially (--test-threads=1)
-// They use env variables, some might fail if run in parallel
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::env;
 
     // Convert a string command into a iterator like env::args()
     fn get_args(command: &str) -> impl Iterator<Item = String> + '_ {
@@ -76,29 +74,20 @@ mod tests {
 
     #[test]
     fn unknown_args_should_error() {
-        // Disable IGNORE_CASE
-        env::set_var(OPT_IGNORE_CASE, "0");
-
         let args = get_args("/minigrep my_pattern path/to/file.ext extra arguments");
-
-        let _ = Config::build(args).inspect_err(|e| assert_eq!(e, "Unknown argument: extra"));
+        let config = Config::build(args);
+        assert_eq!(config, Err("Unknown argument: extra".to_string()));
     }
 
     #[test]
     fn unknown_opts_should_error() {
-        // Disable IGNORE_CASE
-        env::set_var(OPT_IGNORE_CASE, "0");
-
         let args = get_args("/minigrep my_pattern path/to/file.ext -g --other");
-
-        let _ = Config::build(args).inspect_err(|e| assert_eq!(e, "Unknown option: -g"));
+        let config = Config::build(args);
+        assert_eq!(config, Err("Unknown option: -g".to_string()));
     }
 
     #[test]
     fn args_parse_only_args() {
-        // Disable IGNORE_CASE
-        env::set_var(OPT_IGNORE_CASE, "0");
-
         let args = get_args("/minigrep my_pattern path/to/file.ext");
         let config = Config::build(args).unwrap();
 
@@ -111,16 +100,10 @@ mod tests {
             config.ignore_case, false,
             "Ignore case shouldn't be enabled"
         );
-
-        // Disable IGNORE_CASE after test
-        env::remove_var(OPT_IGNORE_CASE);
     }
 
     #[test]
     fn args_parse_option_last() {
-        // Disable IGNORE_CASE
-        env::set_var(OPT_IGNORE_CASE, "0");
-
         let args = get_args("/minigrep my_pattern path/to/file.ext -i");
         let config = Config::build(args).unwrap();
 
@@ -133,16 +116,10 @@ mod tests {
             config.ignore_case, true,
             "Ignore case wasn't enabled by option"
         );
-
-        // Disable IGNORE_CASE after test
-        env::remove_var(OPT_IGNORE_CASE);
     }
 
     #[test]
     fn args_parse_option_first() {
-        // Disable IGNORE_CASE
-        env::set_var(OPT_IGNORE_CASE, "0");
-
         let args = get_args("/minigrep -i my_pattern path/to/file.ext");
         let config = Config::build(args).unwrap();
 
@@ -155,16 +132,10 @@ mod tests {
             config.ignore_case, true,
             "Ignore case wasn't enabled by option"
         );
-
-        // Disable IGNORE_CASE after test
-        env::remove_var(OPT_IGNORE_CASE);
     }
 
     #[test]
     fn args_parse_option_middle() {
-        // Disable IGNORE_CASE
-        env::set_var(OPT_IGNORE_CASE, "0");
-
         let args = get_args("/minigrep my_pattern -i path/to/file.ext");
         let config = Config::build(args).unwrap();
 
@@ -177,45 +148,5 @@ mod tests {
             config.ignore_case, true,
             "Ignore case wasn't enabled by option"
         );
-        assert_eq!(config.query, "my_pattern", "Query not parsed correctly");
-        assert_eq!(
-            config.file_path, "path/to/file.ext",
-            "File path not parsed correctly"
-        );
-        assert_eq!(
-            config.ignore_case, true,
-            "Ignore case wasn't enabled by option"
-        );
-
-        // Disable IGNORE_CASE after test
-        env::remove_var(OPT_IGNORE_CASE);
-    }
-
-    #[test]
-    fn args_parse_option_as_env_var() {
-        // Enable IGNORE_CASE
-        env::set_var(OPT_IGNORE_CASE, "1");
-
-        println!("from test: {}", env::var(OPT_IGNORE_CASE).unwrap());
-
-        let args = get_args("/minigrep my_pattern path/to/file.ext");
-        let config = Config::build(args).unwrap();
-
-        assert_eq!(
-            config.ignore_case, true,
-            "Ignore case wasn't enabled by option"
-        );
-        assert_eq!(config.query, "my_pattern", "Query not parsed correctly");
-        assert_eq!(
-            config.file_path, "path/to/file.ext",
-            "File path not parsed correctly"
-        );
-        assert_eq!(
-            config.ignore_case, true,
-            "Ignore case wasn't enabled by environment variable"
-        );
-
-        // Disable IGNORE_CASE after test
-        env::remove_var(OPT_IGNORE_CASE);
     }
 }
