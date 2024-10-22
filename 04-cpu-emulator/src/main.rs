@@ -1,5 +1,3 @@
-use std::usize;
-
 // CPU: CHIP-8
 struct CPU {
     registers: [u8; 16],
