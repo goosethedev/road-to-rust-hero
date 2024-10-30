@@ -1,17 +1,16 @@
-#![allow(dead_code, unused_variables)]
-
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use crc::Crc;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
-    fs::{File, OpenOptions},
+    fs::{self, File, OpenOptions},
     io::{self, BufReader, BufWriter, Read, Seek, SeekFrom, Write},
-    path::Path,
+    path::{Path, PathBuf},
 };
 
 type ByteStr = [u8];
 type ByteString = Vec<u8>;
+type DBIndex = HashMap<ByteString, u64>;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct KeyValuePair {
@@ -28,44 +27,44 @@ const CHECK: Crc<u32> = Crc::<u32>::new(&crc::CRC_32_CKSUM);
 #[derive(Debug)]
 pub struct ActionKV {
     file: File,
-    index: HashMap<ByteString, u64>,
+    index_path: PathBuf,
+    index: DBIndex,
+}
+
+impl Drop for ActionKV {
+    // Write the index to disk when dropped
+    fn drop(&mut self) {
+        let index_ser = bincode::serialize(&self.index).expect("Index serialization error");
+        fs::write(&self.index_path, index_ser).expect("Error writing index to disk");
+    }
 }
 
 impl ActionKV {
-    /// Open the file containing the database
-    pub fn open(path: &Path) -> io::Result<Self> {
+    /// Open the database file and loads the index (if existent)
+    pub fn new(path: &Path) -> io::Result<Self> {
+        // Get an instance of the DB file
         let file = OpenOptions::new()
             .read(true)
             .create(true)
             .append(true)
             .open(path)?;
-        let index = HashMap::new();
-        Ok(ActionKV { file, index })
-    }
 
-    /// Load the contents of the database to the index.
-    pub fn load(&mut self) -> io::Result<()> {
-        let mut f = BufReader::new(&mut self.file);
+        // Read the index or create one
+        // TODO: Replace with .with_added_extension when gets out of nightly
+        let index_path = path.to_str().unwrap().to_string() + ".idx";
+        let index_path = PathBuf::from(index_path);
 
-        // Read the contents until EOF is reached
-        loop {
-            let position = f.seek(SeekFrom::Current(0))?;
-            let kv = match Self::read_record(&mut f) {
-                Ok(kv) => kv,
-                Err(err) => match err.kind() {
-                    io::ErrorKind::UnexpectedEof => break,
-                    _ => return Err(err),
-                },
-            };
+        let index = if let Ok(buf) = std::fs::read_to_string(&index_path) {
+            bincode::deserialize(&buf.as_bytes()).expect("Index deserialization failed")
+        } else {
+            DBIndex::new()
+        };
 
-            // Remove from index if value is empty
-            if kv.value == b"" {
-                self.index.remove(&kv.key);
-            } else {
-                self.index.insert(kv.key, position);
-            }
-        }
-        Ok(())
+        Ok(ActionKV {
+            file,
+            index_path,
+            index,
+        })
     }
 
     /// Read a single record in the position of the buffer.
@@ -146,14 +145,22 @@ impl ActionKV {
     }
 
     /// Same as appending the same key at the end with the new value.
-    pub fn update(&mut self, key: &ByteStr, value: &ByteStr) -> io::Result<()> {
-        self.insert(key, value)?;
-        Ok(())
+    pub fn update(&mut self, key: &ByteStr, value: &ByteStr) -> io::Result<Option<()>> {
+        if self.index.contains_key(key) {
+            self.insert(key, value)?;
+            Ok(Some(()))
+        } else {
+            Ok(None)
+        }
     }
 
     /// Same as appending the same key with an empty value.
-    pub fn delete(&mut self, key: &ByteStr) -> io::Result<()> {
-        self.insert(key, b"")?;
-        Ok(())
+    pub fn delete(&mut self, key: &ByteStr) -> io::Result<Option<()>> {
+        if self.index.contains_key(key) {
+            self.insert(key, b"")?;
+            Ok(Some(()))
+        } else {
+            Ok(None)
+        }
     }
 }
