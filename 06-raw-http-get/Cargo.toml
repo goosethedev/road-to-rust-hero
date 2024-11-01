@@ -1,0 +1,17 @@
+[package]
+name = "raw-http-get"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+clap = { version = "4.5.20", features = ["derive"] }
+rand = "0.8.5"
+smoltcp = { version = "0.11.0", features = [
+  "proto-igmp",
+  "proto-ipv4",
+  "verbose",
+  "log",
+] }
+hickory-client = "0.24.1"
+hickory-proto = "0.24.1"
+url = "2.5.2"
