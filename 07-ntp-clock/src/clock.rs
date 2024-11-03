@@ -1,12 +1,26 @@
-use chrono::{DateTime, Local, TimeZone};
+use chrono::{DateTime, Duration, Local, TimeZone, Utc};
 use std::io::Error;
+
+use crate::ntp::get_ntp_offset;
 
 pub struct Clock;
 
 impl Clock {
     /// Get the local datetime
-    pub fn get() -> DateTime<Local> {
+    pub fn get_local() -> DateTime<Local> {
         Local::now()
+    }
+
+    /// Get the datetime by consulting a series of NTP servers
+    pub fn get_from_ntp() -> DateTime<Local> {
+        let offset = get_ntp_offset().expect("Error getting NTP offset");
+
+        // Make sure the offset is less than 200 ms
+        let adjust_ms = offset.signum() * offset.abs().min(200.0);
+        let adjust_ms = Duration::milliseconds(adjust_ms as i64);
+
+        let now = Utc::now() + adjust_ms;
+        now.with_timezone(&Local)
     }
 
     /// Change the system call in a UNIX-like system

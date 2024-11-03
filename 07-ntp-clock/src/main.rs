@@ -1,4 +1,5 @@
 mod clock;
+mod ntp;
 
 use chrono::DateTime;
 use clap::{Args, Parser, Subcommand, ValueEnum};
@@ -28,6 +29,10 @@ struct GetDateTimeArgs {
     /// Standard to use when formatting the datetime.
     #[arg(short, long, value_enum, default_value_t = FormatStandard::Rfc3339)]
     standard: FormatStandard,
+
+    /// Use an NTP request instead of the system time
+    #[arg(short, long, default_value_t = false)]
+    use_ntp: bool,
 }
 
 #[derive(Args)]
@@ -56,7 +61,12 @@ fn main() {
     if let Some(command) = args.command {
         match command {
             CliAction::Get(get_args) => {
-                let datetime = Clock::get();
+                let datetime = if get_args.use_ntp {
+                    Clock::get_from_ntp()
+                } else {
+                    Clock::get_local()
+                };
+
                 let datetime = match get_args.standard {
                     FormatStandard::Timestamp => datetime.timestamp().to_string(),
                     FormatStandard::Rfc2822 => datetime.to_rfc2822(),
@@ -83,6 +93,6 @@ fn main() {
             }
         }
     } else {
-        println!("{}", Clock::get());
+        println!("{}", Clock::get_local());
     }
 }
