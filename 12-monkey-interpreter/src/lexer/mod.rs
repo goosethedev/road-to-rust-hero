@@ -18,7 +18,7 @@ impl<'a> Lexer<'a> {
         Self { input, chars }
     }
 
-    pub fn parse(&mut self) -> Vec<Token> {
+    pub fn execute(&mut self) -> Vec<Token> {
         let mut output = vec![];
 
         while let Some(ch) = self.chars.next() {
@@ -26,10 +26,10 @@ impl<'a> Lexer<'a> {
                 continue;
             };
             let token = self
-                .try_parse_double_operator(ch)
-                .or_else(|| self.try_parse_single_operator(ch))
-                .or_else(|| self.try_parse_as_illegal(ch))
-                .unwrap_or_else(|| self.parse_word(ch));
+                .try_tokenize_double_operator(ch)
+                .or_else(|| self.try_tokenize_single_operator(ch))
+                .or_else(|| self.try_tokenize_as_illegal(ch))
+                .unwrap_or_else(|| self.tokenize_word(ch));
             output.push(token);
         }
 
@@ -37,8 +37,8 @@ impl<'a> Lexer<'a> {
         output
     }
 
-    /// Parses a complete alpha-numeric word
-    fn parse_word(&mut self, initial: char) -> Token {
+    /// Tokenizes a complete alpha-numeric word
+    fn tokenize_word(&mut self, initial: char) -> Token {
         let mut word = vec![initial];
 
         while let Some(ch) = self.chars.peek() {
@@ -67,7 +67,7 @@ impl<'a> Lexer<'a> {
     }
 
     /// Checks if is not a supported character.
-    fn try_parse_as_illegal(&self, ch: char) -> Option<Token> {
+    fn try_tokenize_as_illegal(&self, ch: char) -> Option<Token> {
         if ch.is_alphanumeric() || ch == '_' {
             None
         } else {
@@ -75,9 +75,9 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    /// Tries to parse known one-character operators.
-    /// It should be used after `try_parse_double_operator` to avoid collisions.
-    fn try_parse_single_operator(&mut self, ch: char) -> Option<Token> {
+    /// Tries to tokenize known one-character operators.
+    /// It should be used after `try_tokenize_double_operator` to avoid misinterpreting a two-character operator.
+    fn try_tokenize_single_operator(&mut self, ch: char) -> Option<Token> {
         let token = match ch {
             '=' => Token::Assign,
             '+' => Token::Plus,
@@ -98,8 +98,8 @@ impl<'a> Lexer<'a> {
         Some(token)
     }
 
-    /// Tries to parse known two-character operators.
-    fn try_parse_double_operator(&mut self, ch: char) -> Option<Token> {
+    /// Tries to tokenize known two-character operators.
+    fn try_tokenize_double_operator(&mut self, ch: char) -> Option<Token> {
         let next = self.chars.peek()?;
         let token = match (ch, *next) {
             ('=', '=') => Token::Eq,
@@ -134,7 +134,7 @@ mod tests {
         ];
 
         let mut lexer = Lexer::new(input);
-        assert_eq!(expected, lexer.parse())
+        assert_eq!(expected, lexer.execute())
     }
 
     #[test]
@@ -162,7 +162,7 @@ mod tests {
         ];
 
         let mut lexer = Lexer::new(input);
-        assert_eq!(expected, lexer.parse())
+        assert_eq!(expected, lexer.execute())
     }
 
     #[test]
@@ -217,15 +217,15 @@ let result = add(five, ten);";
         ];
 
         let mut lexer = Lexer::new(input);
-        assert_eq!(expected, lexer.parse());
+        assert_eq!(expected, lexer.execute());
     }
 
     #[test]
     fn test_input_illegal() {
-        let input = "好都合";
-        let expected = vec![Illegal('好'), Illegal('都'), Illegal('合'), Eof];
+        let input = "[].@";
+        let expected = vec![Illegal('['), Illegal(']'), Illegal('.'), Illegal('@'), Eof];
         let mut lexer = Lexer::new(input);
-        assert_eq!(expected, lexer.parse());
+        assert_eq!(expected, lexer.execute());
     }
 
     #[test]
@@ -256,7 +256,7 @@ let result = add(five, ten);";
             Eof,
         ];
         let mut lexer = Lexer::new(input);
-        assert_eq!(expected, lexer.parse());
+        assert_eq!(expected, lexer.execute());
     }
 
     #[test]
@@ -291,7 +291,7 @@ let result = add(five, ten);";
             Eof,
         ];
         let mut lexer = Lexer::new(input);
-        assert_eq!(expected, lexer.parse());
+        assert_eq!(expected, lexer.execute());
     }
 
     #[test]
@@ -299,6 +299,6 @@ let result = add(five, ten);";
         let input = "!=/*3-";
         let expected = vec![NotEq, Slash, Asterisk, Int(3), Minus, Eof];
         let mut lexer = Lexer::new(input);
-        assert_eq!(expected, lexer.parse());
+        assert_eq!(expected, lexer.execute());
     }
 }

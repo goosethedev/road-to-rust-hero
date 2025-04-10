@@ -20,7 +20,7 @@ fn main() {
             .expect("Couldn't read from stdin");
 
         let mut lexer = Lexer::new(&line);
-        let output = lexer.parse();
+        let output = lexer.execute();
         dbg!(output);
     }
 }
