@@ -8,35 +8,59 @@ pub enum Token {
     Illegal(char),
     Eof,
 
-    // Identifiers, literals, keywords
+    // Identifiers, literals, keywords (words)
     Identifier(String),
     Int(i64),
     Keyword(KeywordItem),
 
-    // Operators
+    // Operators (single char)
     Assign,
     Plus,
+    Minus,
+    Asterisk,
+    Slash,
+    Bang,
+    Lt,
+    Gt,
 
-    // Delimiters
+    // Delimiters (single char)
     Semicolon,
     Comma,
     LeftParen,
     RightParen,
     LeftBrace,
     RightBrace,
+
+    // Operators (double char)
+    Eq,
+    NotEq,
+    Lte,
+    Gte,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum KeywordItem {
     Let,
     Function,
+    If,
+    Else,
+    Return,
+    True,
+    False,
 }
 
 impl fmt::Display for KeywordItem {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use KeywordItem::*;
+
         let out = match self {
-            KeywordItem::Let => "let",
-            KeywordItem::Function => "fn",
+            Let => "let",
+            Function => "fn",
+            If => "if",
+            Else => "else",
+            Return => "return",
+            True => "true",
+            False => "false",
         };
         write!(f, "{}", out)?;
         Ok(())
@@ -54,12 +78,22 @@ impl fmt::Display for Token {
             Keyword(kw) => &kw.to_string(),
             Assign => "=",
             Plus => "+",
+            Minus => "-",
+            Asterisk => "*",
+            Slash => "/",
+            Bang => "!",
+            Lt => "<",
+            Gt => ">",
             Semicolon => ";",
             Comma => ",",
             LeftParen => "(",
             RightParen => ")",
             LeftBrace => "{",
             RightBrace => "}",
+            Eq => "==",
+            Lte => "<=",
+            Gte => ">=",
+            NotEq => "!=",
         };
         write!(f, "{}", out)?;
         Ok(())
