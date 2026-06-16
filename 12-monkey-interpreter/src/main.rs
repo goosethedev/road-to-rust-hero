@@ -1,26 +1,24 @@
 mod lexer;
 
-use std::io::{self, Write};
+use std::io::Write;
 
 use lexer::Lexer;
 
 const PROMPT: &str = ">> ";
 
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     loop {
         // Print prompt
         print!("{}", PROMPT);
-        io::stdout().flush().unwrap();
+        std::io::stdout().flush()?;
 
         // Read a line from input
         let mut line = String::new();
-        let stdin = io::stdin();
-        stdin
-            .read_line(&mut line)
-            .expect("Couldn't read from stdin");
+        let stdin = std::io::stdin();
+        stdin.read_line(&mut line)?;
 
-        let mut lexer = Lexer::new(&line);
-        let output = lexer.execute();
+        let lexer = Lexer::new(&line);
+        let output: Vec<_> = lexer.into_iter().collect();
         dbg!(output);
     }
 }

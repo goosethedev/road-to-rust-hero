@@ -1,17 +1,20 @@
-#![allow(dead_code)]
-
 use std::fmt;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Token {
     // Control items
-    Illegal(char),
-    Eof,
+    Illegal(String),
 
-    // Identifiers, literals, keywords (words)
+    // Identifiers, literals, keywords
     Identifier(String),
-    Int(i64),
-    Keyword(KeywordItem),
+    Int(String),
+    Let,
+    Function,
+    If,
+    Else,
+    Return,
+    True,
+    False,
 
     // Operators (single char)
     Assign,
@@ -38,22 +41,13 @@ pub enum Token {
     Gte,
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub enum KeywordItem {
-    Let,
-    Function,
-    If,
-    Else,
-    Return,
-    True,
-    False,
-}
-
-impl fmt::Display for KeywordItem {
+impl fmt::Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use KeywordItem::*;
-
-        let out = match self {
+        use Token::*;
+        let out: &str = match self {
+            Illegal(s) => s,
+            Identifier(s) => s,
+            Int(n) => n,
             Let => "let",
             Function => "fn",
             If => "if",
@@ -61,21 +55,6 @@ impl fmt::Display for KeywordItem {
             Return => "return",
             True => "true",
             False => "false",
-        };
-        write!(f, "{}", out)?;
-        Ok(())
-    }
-}
-
-impl fmt::Display for Token {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use Token::*;
-        let out: &str = match self {
-            Illegal(c) => &c.to_string(),
-            Eof => "EOF",
-            Identifier(s) => s,
-            Int(n) => &n.to_string(),
-            Keyword(kw) => &kw.to_string(),
             Assign => "=",
             Plus => "+",
             Minus => "-",

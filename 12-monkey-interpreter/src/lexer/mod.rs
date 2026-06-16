@@ -1,83 +1,74 @@
-#![allow(dead_code)]
-#![allow(unused_variables)]
-
 mod token;
 
-use std::{iter::Peekable, str::Chars};
-
-use token::{KeywordItem, Token};
+use token::Token;
 
 pub struct Lexer<'a> {
-    input: &'a str,
-    chars: Peekable<Chars<'a>>,
+    chars: std::iter::Peekable<std::str::Chars<'a>>,
+}
+
+impl<'a> Iterator for Lexer<'a> {
+    type Item = Token;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        // REFACTOR: this doesn't work with Peekable
+        // self.chars.skip_while(|ch| ch.is_whitespace());
+        while matches!(self.chars.peek(), Some(ch) if ch.is_whitespace()) {
+            self.chars.next().unwrap();
+        }
+
+        self.chars.next().and_then(|ch| {
+            self.try_tokenize_operator(ch)
+                .or_else(|| self.try_tokenize_as_illegal(ch))
+                .or_else(|| Some(self.tokenize_word(ch)))
+        })
+    }
 }
 
 impl<'a> Lexer<'a> {
     pub fn new(input: &'a str) -> Self {
         let chars = input.chars().peekable();
-        Self { input, chars }
+        Self { chars }
     }
 
-    pub fn execute(&mut self) -> Vec<Token> {
-        let mut output = vec![];
-
-        while let Some(ch) = self.chars.next() {
-            if ch.is_whitespace() {
-                continue;
-            };
-            let token = self
-                .try_tokenize_double_operator(ch)
-                .or_else(|| self.try_tokenize_single_operator(ch))
-                .or_else(|| self.try_tokenize_as_illegal(ch))
-                .unwrap_or_else(|| self.tokenize_word(ch));
-            output.push(token);
-        }
-
-        output.push(Token::Eof);
-        output
-    }
-
-    /// Tokenizes a complete alpha-numeric word
+    /// Tokenizes a complete valid alphanumeric word
     fn tokenize_word(&mut self, initial: char) -> Token {
-        let mut word = vec![initial];
+        let mut word = String::from(initial);
 
-        while let Some(ch) = self.chars.peek() {
-            if ch.is_alphanumeric() {
-                word.push(self.chars.next().unwrap());
-            } else {
-                break;
-            };
+        while matches!(self.chars.peek(), Some(ch) if ch.is_alphanumeric() || *ch == '_') {
+            word.push(self.chars.next().unwrap());
         }
-        let word: String = word.iter().collect::<String>();
 
-        if let Ok(num) = word.parse::<i64>() {
-            return Token::Int(num);
+        if word.parse::<i64>().is_ok() {
+            return Token::Int(word);
+        } else if initial.is_numeric() {
+            return Token::Illegal(word);
         }
 
         match word.as_str() {
-            "let" => Token::Keyword(KeywordItem::Let),
-            "fn" => Token::Keyword(KeywordItem::Function),
-            "if" => Token::Keyword(KeywordItem::If),
-            "else" => Token::Keyword(KeywordItem::Else),
-            "return" => Token::Keyword(KeywordItem::Return),
-            "true" => Token::Keyword(KeywordItem::True),
-            "false" => Token::Keyword(KeywordItem::False),
+            "let" => Token::Let,
+            "fn" => Token::Function,
+            "if" => Token::If,
+            "else" => Token::Else,
+            "return" => Token::Return,
+            "true" => Token::True,
+            "false" => Token::False,
             _ => Token::Identifier(word),
         }
     }
 
     /// Checks if is not a supported character.
     fn try_tokenize_as_illegal(&self, ch: char) -> Option<Token> {
-        if ch.is_alphanumeric() || ch == '_' {
-            None
-        } else {
-            Some(Token::Illegal(ch))
-        }
+        if ch.is_alphanumeric() || ch == '_' { None } else { Some(Token::Illegal(ch.to_string())) }
+    }
+
+    /// Tries to tokenize an operator.
+    fn try_tokenize_operator(&mut self, ch: char) -> Option<Token> {
+        self._try_tokenize_double_operator(ch).or(self._try_tokenize_single_operator(ch))
     }
 
     /// Tries to tokenize known one-character operators.
     /// It should be used after `try_tokenize_double_operator` to avoid misinterpreting a two-character operator.
-    fn try_tokenize_single_operator(&mut self, ch: char) -> Option<Token> {
+    fn _try_tokenize_single_operator(&mut self, ch: char) -> Option<Token> {
         let token = match ch {
             '=' => Token::Assign,
             '+' => Token::Plus,
@@ -99,7 +90,7 @@ impl<'a> Lexer<'a> {
     }
 
     /// Tries to tokenize known two-character operators.
-    fn try_tokenize_double_operator(&mut self, ch: char) -> Option<Token> {
+    fn _try_tokenize_double_operator(&mut self, ch: char) -> Option<Token> {
         let next = self.chars.peek()?;
         let token = match (ch, *next) {
             ('=', '=') => Token::Eq,
@@ -108,7 +99,7 @@ impl<'a> Lexer<'a> {
             ('<', '=') => Token::Lte,
             _ => return None,
         };
-        self.chars.next(); // Advance the pointer
+        self.chars.next();
         Some(token)
     }
 }
@@ -116,53 +107,48 @@ impl<'a> Lexer<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lexer::token::KeywordItem::*;
     use crate::lexer::token::Token::*;
 
     #[test]
     fn test_input_sum_statement() {
-        let input = "let eleven = 4 + 7;";
+        let input = "let six_seven = 6 + 7;";
         let expected = vec![
-            Keyword(Let),
-            Identifier("eleven".into()),
+            Let,
+            Identifier("six_seven".to_string()),
             Assign,
-            Int(4),
+            Int("6".to_string()),
             Plus,
-            Int(7),
+            Int("7".to_string()),
             Semicolon,
-            Eof,
         ];
-
-        let mut lexer = Lexer::new(input);
-        assert_eq!(expected, lexer.execute())
+        let actual: Vec<_> = Lexer::new(input).collect();
+        assert_eq!(actual, expected);
     }
 
     #[test]
     fn test_input_math_statement() {
         let input = "let result = (7+8-3) / (2*3);";
         let expected = vec![
-            Keyword(Let),
+            Let,
             Identifier("result".into()),
             Assign,
             LeftParen,
-            Int(7),
+            Int("7".to_string()),
             Plus,
-            Int(8),
+            Int("8".to_string()),
             Minus,
-            Int(3),
+            Int("3".to_string()),
             RightParen,
             Slash,
             LeftParen,
-            Int(2),
+            Int("2".to_string()),
             Asterisk,
-            Int(3),
+            Int("3".to_string()),
             RightParen,
             Semicolon,
-            Eof,
         ];
-
-        let mut lexer = Lexer::new(input);
-        assert_eq!(expected, lexer.execute())
+        let actual: Vec<_> = Lexer::new(input).collect();
+        assert_eq!(actual, expected);
     }
 
     #[test]
@@ -177,20 +163,20 @@ x + y;
 let result = add(five, ten);";
 
         let expected = vec![
-            Keyword(Let),
+            Let,
             Identifier("five".into()),
             Assign,
-            Int(5),
+            Int("5".to_string()),
             Semicolon,
-            Keyword(Let),
+            Let,
             Identifier("ten".into()),
             Assign,
-            Int(10),
+            Int("10".to_string()),
             Semicolon,
-            Keyword(Let),
+            Let,
             Identifier("add".into()),
             Assign,
-            Keyword(Function),
+            Function,
             LeftParen,
             Identifier("x".into()),
             Comma,
@@ -203,7 +189,7 @@ let result = add(five, ten);";
             Semicolon,
             RightBrace,
             Semicolon,
-            Keyword(Let),
+            Let,
             Identifier("result".into()),
             Assign,
             Identifier("add".into()),
@@ -213,19 +199,39 @@ let result = add(five, ten);";
             Identifier("ten".into()),
             RightParen,
             Semicolon,
-            Eof,
         ];
-
-        let mut lexer = Lexer::new(input);
-        assert_eq!(expected, lexer.execute());
+        let actual: Vec<_> = Lexer::new(input).collect();
+        assert_eq!(actual, expected);
     }
 
     #[test]
     fn test_input_illegal() {
         let input = "[].@";
-        let expected = vec![Illegal('['), Illegal(']'), Illegal('.'), Illegal('@'), Eof];
-        let mut lexer = Lexer::new(input);
-        assert_eq!(expected, lexer.execute());
+        let expected = vec![
+            Illegal("[".to_string()),
+            Illegal("]".to_string()),
+            Illegal(".".to_string()),
+            Illegal("@".to_string()),
+        ];
+        let actual: Vec<_> = Lexer::new(input).collect();
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_illegal_identifier() {
+        let input = "let 23now = 4;";
+        let expected =
+            vec![Let, Illegal("23now".to_string()), Assign, Int("4".to_string()), Semicolon];
+        let actual: Vec<_> = Lexer::new(input).collect();
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_input_unicode() {
+        let input = "素敵🌠";
+        let expected = vec![Identifier("素敵".to_string()), Illegal("🌠".to_string())];
+        let actual: Vec<_> = Lexer::new(input).collect();
+        assert_eq!(actual, expected);
     }
 
     #[test]
@@ -236,27 +242,26 @@ let result = add(five, ten);";
     return false;
 }";
         let expected = vec![
-            Keyword(If),
+            If,
             LeftParen,
-            Int(5),
+            Int("5".to_string()),
             Lt,
-            Int(10),
+            Int("10".to_string()),
             RightParen,
             LeftBrace,
-            Keyword(Return),
-            Keyword(True),
+            Return,
+            True,
             Semicolon,
             RightBrace,
-            Keyword(Else),
+            Else,
             LeftBrace,
-            Keyword(Return),
-            Keyword(False),
+            Return,
+            False,
             Semicolon,
             RightBrace,
-            Eof,
         ];
-        let mut lexer = Lexer::new(input);
-        assert_eq!(expected, lexer.execute());
+        let actual: Vec<_> = Lexer::new(input).collect();
+        assert_eq!(actual, expected);
     }
 
     #[test]
@@ -264,41 +269,40 @@ let result = add(five, ten);";
         let input = "10 == 10; 9 != 10;
 5 > 3; 7 >= 5; 2 <= 4; 1 < 9;";
         let expected = vec![
-            Int(10),
+            Int("10".to_string()),
             Eq,
-            Int(10),
+            Int("10".to_string()),
             Semicolon,
-            Int(9),
+            Int("9".to_string()),
             NotEq,
-            Int(10),
+            Int("10".to_string()),
             Semicolon,
-            Int(5),
+            Int("5".to_string()),
             Gt,
-            Int(3),
+            Int("3".to_string()),
             Semicolon,
-            Int(7),
+            Int("7".to_string()),
             Gte,
-            Int(5),
+            Int("5".to_string()),
             Semicolon,
-            Int(2),
+            Int("2".to_string()),
             Lte,
-            Int(4),
+            Int("4".to_string()),
             Semicolon,
-            Int(1),
+            Int("1".to_string()),
             Lt,
-            Int(9),
+            Int("9".to_string()),
             Semicolon,
-            Eof,
         ];
-        let mut lexer = Lexer::new(input);
-        assert_eq!(expected, lexer.execute());
+        let actual: Vec<_> = Lexer::new(input).collect();
+        assert_eq!(actual, expected);
     }
 
     #[test]
     fn test_input_random_characters() {
         let input = "!=/*3-";
-        let expected = vec![NotEq, Slash, Asterisk, Int(3), Minus, Eof];
-        let mut lexer = Lexer::new(input);
-        assert_eq!(expected, lexer.execute());
+        let expected = vec![NotEq, Slash, Asterisk, Int("3".to_string()), Minus];
+        let actual: Vec<_> = Lexer::new(input).collect();
+        assert_eq!(actual, expected);
     }
 }
