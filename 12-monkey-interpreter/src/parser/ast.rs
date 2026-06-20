@@ -1,5 +1,9 @@
+#![allow(dead_code)]
+
 use crate::lexer::{Lexer, Token};
-use crate::parser::{Expr, InfixOp, Operation, ParserError, Precedence, PrefixOp, Statement};
+use crate::parser::{
+    Block, Expr, InfixOp, Operation, ParserError, Precedence, PrefixOp, Statement,
+};
 
 pub struct Ast<'a> {
     tokens: std::iter::Peekable<Lexer<'a>>,
@@ -95,6 +99,17 @@ impl<'a> Ast<'a> {
                 self.consume_expected(Token::RightParen)?;
                 expr
             }
+            Token::If => {
+                self.consume_expected(Token::LeftParen)?;
+                let condition = self.parse_expression(Precedence::Lowest)?.boxed();
+                self.consume_expected(Token::RightParen)?;
+                let then_block = self.parse_block()?;
+                let else_block = (self.peek_token()? == &Token::Else).then_some({
+                    self.get_token().unwrap();
+                    self.parse_block()?
+                });
+                Expr::IfCondition { condition, then_block, else_block }
+            }
             t => return Err(ParserError::UnexpectedToken(t)),
         };
 
@@ -126,6 +141,16 @@ impl<'a> Ast<'a> {
         Ok(expr)
     }
 
+    fn parse_block(&mut self) -> Result<Block, ParserError> {
+        self.consume_expected(Token::LeftBrace)?;
+        let mut statements = vec![];
+        while self.peek_token()? != &Token::RightBrace {
+            statements.push(self.parse_statement()?);
+        }
+        self.consume_expected(Token::RightBrace)?;
+        Ok(Block(statements))
+    }
+
     fn get_token(&mut self) -> Result<Token, ParserError> {
         self.tokens.next().ok_or(ParserError::UnexpectedEof)
     }
@@ -146,7 +171,7 @@ impl<'a> Ast<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lexer::Lexer;
+    use crate::{lexer::Lexer, parser::Block};
 
     #[test]
     fn test_parse_statements() {
@@ -226,4 +251,43 @@ return foobar;";
 
         assert_eq!(expected, actual);
     }
+
+    #[test]
+    fn test_parse_if_else_expr() {
+        let input = "let max_value = if (x >= y) { x } else { y };";
+        let lexer = Lexer::new(input);
+        let actual = Ast::new(lexer).parse();
+
+        let expected = vec![Ok(Statement::Let {
+            iden: "max_value".to_string(),
+            expr: Expr::IfCondition {
+                condition: Expr::Infix {
+                    op: InfixOp::Gte,
+                    lh: Expr::Identifier("x".to_string()).boxed(),
+                    rh: Expr::Identifier("y".to_string()).boxed(),
+                }
+                .boxed(),
+                then_block: Block(vec![Statement::Expression {
+                    expr: Expr::Identifier("x".to_string()),
+                }]),
+                else_block: Some(Block(vec![Statement::Expression {
+                    expr: Expr::Identifier("y".to_string()),
+                }])),
+            },
+        })];
+        assert_eq!(expected, actual);
+    }
+
+    //     #[test]
+    //     fn test_parse_fn_expr() {
+    //         let input = "let add = fn(x, y) {
+    //     return x + y;
+    // };";
+    //         let lexer = Lexer::new(input);
+    //         let ast = Ast::new(lexer);
+
+    //         let a = Expr::Sum { lh: Expr::Int(4), rh: Expr::Int(5) };
+    //         let b = Expr::Mult { lh: a, rh: Expr::Int(2) };
+    //         let expected = vec![Statement::Let { iden: "x", expr: b }];
+    //     }
 }

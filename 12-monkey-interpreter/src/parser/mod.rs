@@ -30,12 +30,16 @@ pub enum Statement {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+pub struct Block(Vec<Statement>);
+
+#[derive(Debug, PartialEq, Eq)]
 pub enum Expr {
     Prefix { op: PrefixOp, expr: Box<Expr> },
     Infix { op: InfixOp, lh: Box<Expr>, rh: Box<Expr> },
     Int(i64),
     Bool(bool),
     Identifier(String),
+    IfCondition { condition: Box<Expr>, then_block: Block, else_block: Option<Block> },
 }
 
 impl Expr {
@@ -105,15 +109,30 @@ impl fmt::Display for Statement {
     }
 }
 
+impl fmt::Display for Block {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s: String = self.0.iter().map(|s| format!("\t{s}\n")).collect();
+        write!(f, "{{\n{s}}}")?;
+        Ok(())
+    }
+}
+
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use Expr::*;
-        let out: &str = match self {
-            Prefix { op, expr } => &format!("({op}{expr})"),
-            Infix { op, lh, rh } => &format!("({lh} {op} {rh})"),
-            Int(n) => &n.to_string(),
-            Bool(b) => &b.to_string(),
-            Identifier(s) => s,
+        let out = match self {
+            Prefix { op, expr } => format!("({op}{expr})"),
+            Infix { op, lh, rh } => format!("({lh} {op} {rh})"),
+            Int(n) => n.to_string(),
+            Bool(b) => b.to_string(),
+            Identifier(s) => s.clone(),
+            IfCondition { condition, then_block, else_block } => {
+                if let Some(else_block) = else_block {
+                    format!("if ({condition}) {then_block} else {else_block}")
+                } else {
+                    format!("if ({condition}) {then_block}")
+                }
+            }
         };
         write!(f, "{}", out)?;
         Ok(())
