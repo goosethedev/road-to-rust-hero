@@ -41,6 +41,7 @@ pub enum Expr {
     Identifier(String),
     IfCondition { condition: Box<Expr>, then_block: Block, else_block: Option<Block> },
     FnExpr { params: Vec<String>, body: Block },
+    FnCall { callable: Box<Expr>, args: Vec<Expr> },
 }
 
 impl Expr {
@@ -137,6 +138,11 @@ impl fmt::Display for Expr {
             FnExpr { params, body } => {
                 let params = params.join(", ");
                 format!("fn({params}) {body}")
+            }
+            FnCall { callable, args } => {
+                let args: Vec<_> = args.iter().map(|a| a.to_string()).collect();
+                let args = args.join(", ");
+                format!("{callable}({args})")
             }
         };
         write!(f, "{}", out)?;

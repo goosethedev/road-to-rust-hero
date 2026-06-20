@@ -122,8 +122,24 @@ impl<'a> Ast<'a> {
             t => return Err(ParserError::UnexpectedToken(t)),
         };
 
-        // Check if an infix expression can be parsed
+        // Check if an infix or postfix expression can be parsed
         while let Some(token) = self.tokens.peek() {
+            // First, check if it a function call
+            if token == &Token::LeftParen {
+                self.get_token().unwrap();
+                let mut args = vec![];
+                while !self.consume_expected(Token::RightParen).is_ok() {
+                    args.push(self.parse_expression(Precedence::Lowest)?);
+                    if self.consume_expected(Token::RightParen).is_ok() {
+                        break;
+                    }
+                    self.consume_expected(Token::Comma)?;
+                }
+                expr = Expr::FnCall { callable: expr.boxed(), args };
+                continue;
+            }
+
+            // Else, check for a binary infix expression
             let op = match token {
                 Token::Plus => InfixOp::Add,
                 Token::Minus => InfixOp::Sub,
@@ -183,7 +199,8 @@ impl<'a> Ast<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{lexer::Lexer, parser::Block};
+    use crate::lexer::Lexer;
+    use crate::parser::{Block, Expr::*, InfixOp::*};
 
     #[test]
     fn test_parse_statements() {
@@ -194,16 +211,16 @@ return foobar;";
         let lexer = Lexer::new(input);
         let actual = Ast::new(lexer).parse();
         let expected = vec![
-            Ok(Statement::Let { iden: "x".to_string(), expr: Expr::Int(5) }),
-            Ok(Statement::Let { iden: "y".to_string(), expr: Expr::Bool(true) }),
+            Ok(Statement::Let { iden: "x".to_string(), expr: Int(5) }),
+            Ok(Statement::Let { iden: "y".to_string(), expr: Bool(true) }),
             Ok(Statement::Expression {
-                expr: Expr::Infix {
-                    op: InfixOp::Add,
-                    lh: Expr::Identifier("x".to_string()).boxed(),
-                    rh: Expr::Int(4).boxed(),
+                expr: Infix {
+                    op: Add,
+                    lh: Identifier("x".to_string()).boxed(),
+                    rh: Int(4).boxed(),
                 },
             }),
-            Ok(Statement::Return { expr: Expr::Identifier("foobar".to_string()) }),
+            Ok(Statement::Return { expr: Identifier("foobar".to_string()) }),
         ];
         assert_eq!(expected, actual);
     }
@@ -214,12 +231,8 @@ return foobar;";
         let lexer = Lexer::new(input);
         let actual = Ast::new(lexer).parse();
 
-        let a = Expr::Infix {
-            op: InfixOp::Add,
-            lh: Expr::Identifier("foobar".to_string()).boxed(),
-            rh: Expr::Int(5).boxed(),
-        };
-        let b = Expr::Infix { op: InfixOp::Mult, lh: a.boxed(), rh: Expr::Int(2).boxed() };
+        let a = Infix { op: Add, lh: Identifier("foobar".to_string()).boxed(), rh: Int(5).boxed() };
+        let b = Infix { op: Mult, lh: a.boxed(), rh: Int(2).boxed() };
         let expected = vec![Ok(Statement::Let { iden: "y".to_string(), expr: b })];
         assert_eq!(expected, actual);
     }
@@ -238,13 +251,9 @@ return foobar;";
         let actual: Vec<_> = [
             Statement::Let {
                 iden: "x".to_string(),
-                expr: Expr::Infix {
-                    op: InfixOp::Add,
-                    lh: Expr::Int(4).boxed(),
-                    rh: Expr::Int(7).boxed(),
-                },
+                expr: Infix { op: Add, lh: Int(4).boxed(), rh: Int(7).boxed() },
             },
-            Statement::Return { expr: Expr::Identifier("x".to_string()) },
+            Statement::Return { expr: Identifier("x".to_string()) },
         ]
         .into_iter()
         .map(|v| v.to_string())
@@ -272,18 +281,18 @@ return foobar;";
 
         let expected = vec![Ok(Statement::Let {
             iden: "max_value".to_string(),
-            expr: Expr::IfCondition {
-                condition: Expr::Infix {
-                    op: InfixOp::Gte,
-                    lh: Expr::Identifier("x".to_string()).boxed(),
-                    rh: Expr::Identifier("y".to_string()).boxed(),
+            expr: IfCondition {
+                condition: Infix {
+                    op: Gte,
+                    lh: Identifier("x".to_string()).boxed(),
+                    rh: Identifier("y".to_string()).boxed(),
                 }
                 .boxed(),
                 then_block: Block(vec![Statement::Expression {
-                    expr: Expr::Identifier("x".to_string()),
+                    expr: Identifier("x".to_string()),
                 }]),
                 else_block: Some(Block(vec![Statement::Expression {
-                    expr: Expr::Identifier("y".to_string()),
+                    expr: Identifier("y".to_string()),
                 }])),
             },
         })];
@@ -298,14 +307,14 @@ return foobar;";
         let lexer = Lexer::new(input);
         let actual = Ast::new(lexer).parse();
 
-        let expr = Expr::Infix {
-            op: InfixOp::Add,
-            lh: Expr::Identifier("x".to_string()).boxed(),
-            rh: Expr::Identifier("y".to_string()).boxed(),
+        let expr = Infix {
+            op: Add,
+            lh: Identifier("x".to_string()).boxed(),
+            rh: Identifier("y".to_string()).boxed(),
         };
         let body = Block(vec![Statement::Return { expr }]);
         let params = vec!["x".to_string(), "y".to_string()];
-        let fn_expr = Expr::FnExpr { params, body };
+        let fn_expr = FnExpr { params, body };
         let expected = vec![Ok(Statement::Let { iden: "add".to_string(), expr: fn_expr })];
 
         assert_eq!(expected, actual);
@@ -320,19 +329,55 @@ fn(x, y, z) {};";
         let actual = Ast::new(lexer).parse();
 
         let expected = vec![
+            Ok(Statement::Expression { expr: FnExpr { params: vec![], body: Block(vec![]) } }),
             Ok(Statement::Expression {
-                expr: Expr::FnExpr { params: vec![], body: Block(vec![]) },
+                expr: FnExpr { params: vec!["a".to_string()], body: Block(vec![]) },
             }),
             Ok(Statement::Expression {
-                expr: Expr::FnExpr { params: vec!["a".to_string()], body: Block(vec![]) },
-            }),
-            Ok(Statement::Expression {
-                expr: Expr::FnExpr {
+                expr: FnExpr {
                     params: vec!["x".to_string(), "y".to_string(), "z".to_string()],
                     body: Block(vec![]),
                 },
             }),
         ];
+
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_parse_call_expr() {
+        let input = "let sum = add(x, 2);
+myfunc(2 / 5, 3 * (y + 4));
+(fn(x, y) { x * y })(4, 5);";
+        let lexer = Lexer::new(input);
+        let actual = Ast::new(lexer).parse();
+
+        let expr = FnCall {
+            callable: Identifier("add".to_string()).boxed(),
+            args: vec![Identifier("x".to_string()), Int(2)],
+        };
+        let fn_call_1 = Statement::Let { iden: "sum".to_string(), expr };
+
+        let callable = Identifier("myfunc".to_string()).boxed();
+        let add = Infix { op: Add, lh: Identifier("y".to_string()).boxed(), rh: Int(4).boxed() };
+        let mult = Infix { op: Mult, lh: Int(3).boxed(), rh: add.boxed() };
+        let args = vec![Infix { op: Div, lh: Int(2).boxed(), rh: Int(5).boxed() }, mult];
+        let fn_call_2 = Statement::Expression { expr: FnCall { callable, args } };
+
+        let expr = Infix {
+            op: Mult,
+            lh: Identifier("x".to_string()).boxed(),
+            rh: Identifier("y".to_string()).boxed(),
+        };
+        let callable = FnExpr {
+            params: vec!["x".to_string(), "y".to_string()],
+            body: Block(vec![Statement::Expression { expr }]),
+        }
+        .boxed();
+        let args = vec![Int(4), Int(5)];
+        let fn_call_3 = Statement::Expression { expr: FnCall { callable, args } };
+
+        let expected = vec![Ok(fn_call_1), Ok(fn_call_2), Ok(fn_call_3)];
 
         assert_eq!(expected, actual);
     }
