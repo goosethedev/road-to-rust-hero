@@ -40,6 +40,7 @@ pub enum Expr {
     Bool(bool),
     Identifier(String),
     IfCondition { condition: Box<Expr>, then_block: Block, else_block: Option<Block> },
+    FnExpr { params: Vec<String>, body: Block },
 }
 
 impl Expr {
@@ -132,6 +133,10 @@ impl fmt::Display for Expr {
                 } else {
                     format!("if ({condition}) {then_block}")
                 }
+            }
+            FnExpr { params, body } => {
+                let params = params.join(", ");
+                format!("fn({params}) {body}")
             }
         };
         write!(f, "{}", out)?;

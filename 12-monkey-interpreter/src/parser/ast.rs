@@ -44,15 +44,11 @@ impl<'a> Ast<'a> {
         // Advance 'let' token
         self.get_token()?;
         // Parse identifier
-        let Ok(Token::Identifier(iden)) = self.get_token() else {
-            return Err(ParserError::MissingIdentifier);
-        };
+        let iden = self.consume_identifier()?;
         // Parse expected "="
         self.consume_expected(Token::Assign)?;
-
         // Parse expression
         let expr = self.parse_expression(Precedence::Lowest)?;
-
         // Parse expected semicolon
         self.consume_expected(Token::Semicolon)?;
 
@@ -110,6 +106,19 @@ impl<'a> Ast<'a> {
                 });
                 Expr::IfCondition { condition, then_block, else_block }
             }
+            Token::Function => {
+                self.consume_expected(Token::LeftParen)?;
+                let mut params = vec![];
+                while !self.consume_expected(Token::RightParen).is_ok() {
+                    params.push(self.consume_identifier()?);
+                    if self.consume_expected(Token::RightParen).is_ok() {
+                        break;
+                    }
+                    self.consume_expected(Token::Comma)?;
+                }
+                let body = self.parse_block()?;
+                Expr::FnExpr { params, body }
+            }
             t => return Err(ParserError::UnexpectedToken(t)),
         };
 
@@ -159,12 +168,15 @@ impl<'a> Ast<'a> {
         self.tokens.peek().ok_or(ParserError::UnexpectedEof)
     }
 
-    fn consume_expected(&mut self, expected: Token) -> Result<(), ParserError> {
-        if *self.peek_token()? == expected {
-            self.get_token().unwrap();
-            return Ok(());
+    fn consume_identifier(&mut self) -> Result<String, ParserError> {
+        match self.get_token()? {
+            Token::Identifier(iden) => Ok(iden),
+            _ => Err(ParserError::MissingIdentifier),
         }
-        Err(ParserError::MissingToken(expected))
+    }
+
+    fn consume_expected(&mut self, expected: Token) -> Result<Token, ParserError> {
+        self.tokens.next_if_eq(&expected).ok_or(ParserError::MissingToken(expected))
     }
 }
 
@@ -278,16 +290,50 @@ return foobar;";
         assert_eq!(expected, actual);
     }
 
-    //     #[test]
-    //     fn test_parse_fn_expr() {
-    //         let input = "let add = fn(x, y) {
-    //     return x + y;
-    // };";
-    //         let lexer = Lexer::new(input);
-    //         let ast = Ast::new(lexer);
+    #[test]
+    fn test_parse_fn_expr() {
+        let input = "let add = fn(x, y) {
+        return x + y;
+    };";
+        let lexer = Lexer::new(input);
+        let actual = Ast::new(lexer).parse();
 
-    //         let a = Expr::Sum { lh: Expr::Int(4), rh: Expr::Int(5) };
-    //         let b = Expr::Mult { lh: a, rh: Expr::Int(2) };
-    //         let expected = vec![Statement::Let { iden: "x", expr: b }];
-    //     }
+        let expr = Expr::Infix {
+            op: InfixOp::Add,
+            lh: Expr::Identifier("x".to_string()).boxed(),
+            rh: Expr::Identifier("y".to_string()).boxed(),
+        };
+        let body = Block(vec![Statement::Return { expr }]);
+        let params = vec!["x".to_string(), "y".to_string()];
+        let fn_expr = Expr::FnExpr { params, body };
+        let expected = vec![Ok(Statement::Let { iden: "add".to_string(), expr: fn_expr })];
+
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_parse_fn_expr_params() {
+        let input = "fn() {};
+fn(a) {};
+fn(x, y, z) {};";
+        let lexer = Lexer::new(input);
+        let actual = Ast::new(lexer).parse();
+
+        let expected = vec![
+            Ok(Statement::Expression {
+                expr: Expr::FnExpr { params: vec![], body: Block(vec![]) },
+            }),
+            Ok(Statement::Expression {
+                expr: Expr::FnExpr { params: vec!["a".to_string()], body: Block(vec![]) },
+            }),
+            Ok(Statement::Expression {
+                expr: Expr::FnExpr {
+                    params: vec!["x".to_string(), "y".to_string(), "z".to_string()],
+                    body: Block(vec![]),
+                },
+            }),
+        ];
+
+        assert_eq!(expected, actual);
+    }
 }
