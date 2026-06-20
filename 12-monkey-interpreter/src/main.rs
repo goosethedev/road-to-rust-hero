@@ -1,8 +1,10 @@
 mod lexer;
+mod parser;
 
 use std::io::Write;
 
 use lexer::Lexer;
+use parser::Ast;
 
 const PROMPT: &str = ">> ";
 
@@ -18,7 +20,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         stdin.read_line(&mut line)?;
 
         let lexer = Lexer::new(&line);
-        let output: Vec<_> = lexer.into_iter().collect();
-        dbg!(output);
+        let ast = Ast::new(lexer).parse();
+        dbg!(ast);
     }
 }

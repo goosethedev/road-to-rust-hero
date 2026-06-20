@@ -1,6 +1,6 @@
 mod token;
 
-use token::Token;
+pub use token::Token;
 
 pub struct Lexer<'a> {
     chars: std::iter::Peekable<std::str::Chars<'a>>,
