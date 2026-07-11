@@ -21,7 +21,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // Process
         let lexer = Lexer::new(&line);
-        let ast = Parser::new(lexer).parse();
+        let ast: Vec<_> = Parser::new(lexer).collect();
 
         // Print results
         for res in ast {

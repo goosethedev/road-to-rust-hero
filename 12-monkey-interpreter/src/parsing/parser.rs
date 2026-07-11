@@ -1,27 +1,24 @@
-#![allow(dead_code)]
-
 use crate::lexing::{Lexer, Token};
 use crate::parsing::{
     Block, Expr, InfixOp, Operation, ParserError, Precedence, PrefixOp, Statement,
 };
 
-pub type Ast = Vec<Result<Statement, ParserError>>;
-
 pub struct Parser<'a> {
     tokens: std::iter::Peekable<Lexer<'a>>,
+}
+
+impl<'a> Iterator for Parser<'a> {
+    type Item = Result<Statement, ParserError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.tokens.peek().is_some().then_some(self.parse_statement())
+    }
 }
 
 impl<'a> Parser<'a> {
     pub fn new(lexer: Lexer<'a>) -> Self {
         let tokens = lexer.into_iter().peekable();
         Self { tokens }
-    }
-    pub fn parse(&mut self) -> Ast {
-        let mut statements = vec![];
-        while self.tokens.peek().is_some() {
-            statements.push(self.parse_statement());
-        }
-        statements
     }
 
     fn parse_statement(&mut self) -> Result<Statement, ParserError> {
@@ -204,6 +201,8 @@ mod tests {
     use crate::lexing::Lexer;
     use crate::parsing::{Block, Expr::*, InfixOp::*};
 
+    type Ast = Vec<Result<Statement, ParserError>>;
+
     #[test]
     fn test_parse_statements() {
         let input = "let x = 5;
@@ -211,7 +210,7 @@ let y = true;
 x + 4;
 return foobar;";
         let lexer = Lexer::new(input);
-        let actual = Parser::new(lexer).parse();
+        let actual: Ast = Parser::new(lexer).collect();
         let expected = vec![
             Ok(Statement::Let { iden: "x".to_string(), expr: Int(5) }),
             Ok(Statement::Let { iden: "y".to_string(), expr: Bool(true) }),
@@ -231,7 +230,7 @@ return foobar;";
     fn test_parse_basic_expr() {
         let input = "let y = (foobar + 5) * 2;";
         let lexer = Lexer::new(input);
-        let actual = Parser::new(lexer).parse();
+        let actual: Ast = Parser::new(lexer).collect();
 
         let a = Infix { op: Add, lh: Identifier("foobar".to_string()).boxed(), rh: Int(5).boxed() };
         let b = Infix { op: Mult, lh: a.boxed(), rh: Int(2).boxed() };
@@ -243,7 +242,7 @@ return foobar;";
     fn test_missing_identifier() {
         let input = "let (x + y)";
         let lexer = Lexer::new(input);
-        let actual = Parser::new(lexer).parse();
+        let actual: Ast = Parser::new(lexer).collect();
         let expected = vec![Err(ParserError::MissingIdentifier)];
         assert_eq!(expected, actual);
     }
@@ -268,7 +267,7 @@ return foobar;";
     fn test_parse_operator_precedence() {
         let input = "4 * foo / 5 + - 2 * (bar / 3 - 1)";
         let lexer = Lexer::new(input);
-        let ast = Parser::new(lexer).parse();
+        let ast: Ast = Parser::new(lexer).collect();
         let actual: Vec<_> = ast.into_iter().map(|v| v.and_then(|s| Ok(s.to_string()))).collect();
         let expected = vec![Ok("(((4 * foo) / 5) + ((-2) * ((bar / 3) - 1)))".to_string())];
 
@@ -279,7 +278,7 @@ return foobar;";
     fn test_parse_if_else_expr() {
         let input = "let max_value = if (x >= y) { x } else { y };";
         let lexer = Lexer::new(input);
-        let actual = Parser::new(lexer).parse();
+        let actual: Ast = Parser::new(lexer).collect();
 
         let expected = vec![Ok(Statement::Let {
             iden: "max_value".to_string(),
@@ -307,7 +306,7 @@ return foobar;";
         return x + y;
     };";
         let lexer = Lexer::new(input);
-        let actual = Parser::new(lexer).parse();
+        let actual: Ast = Parser::new(lexer).collect();
 
         let expr = Infix {
             op: Add,
@@ -328,7 +327,7 @@ return foobar;";
 fn(a) {};
 fn(x, y, z) {};";
         let lexer = Lexer::new(input);
-        let actual = Parser::new(lexer).parse();
+        let actual: Ast = Parser::new(lexer).collect();
 
         let expected = vec![
             Ok(Statement::Expression { expr: FnExpr { params: vec![], body: Block(vec![]) } }),
@@ -352,7 +351,7 @@ fn(x, y, z) {};";
 myfunc(2 / 5, 3 * (y + 4));
 (fn(x, y) { x * y })(4, 5);";
         let lexer = Lexer::new(input);
-        let actual = Parser::new(lexer).parse();
+        let actual: Ast = Parser::new(lexer).collect();
 
         let expr = FnCall {
             callable: Identifier("add".to_string()).boxed(),
