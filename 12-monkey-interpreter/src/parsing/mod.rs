@@ -1,8 +1,8 @@
-mod ast;
+mod parser;
 
-pub use ast::Ast;
+pub use parser::Parser;
 
-use crate::lexer::Token;
+use crate::lexing::Token;
 use core::fmt;
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]

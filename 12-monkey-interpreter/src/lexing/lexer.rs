@@ -1,6 +1,4 @@
-mod token;
-
-pub use token::Token;
+use super::Token;
 
 pub struct Lexer<'a> {
     chars: std::iter::Peekable<std::str::Chars<'a>>,
@@ -107,7 +105,7 @@ impl<'a> Lexer<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lexer::token::Token::*;
+    use crate::lexing::token::Token::*;
 
     #[test]
     fn test_input_sum_statement() {

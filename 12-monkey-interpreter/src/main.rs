@@ -1,10 +1,10 @@
-mod lexer;
-mod parser;
+mod lexing;
+mod parsing;
 
 use std::io::Write;
 
-use lexer::Lexer;
-use parser::Ast;
+use lexing::Lexer;
+use parsing::Parser;
 
 const PROMPT: &str = ">> ";
 
@@ -21,7 +21,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // Process
         let lexer = Lexer::new(&line);
-        let ast = Ast::new(lexer).parse();
+        let ast = Parser::new(lexer).parse();
 
         // Print results
         for res in ast {
