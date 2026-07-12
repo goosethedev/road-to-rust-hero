@@ -28,14 +28,13 @@ impl<'a> Parser<'a> {
             _ => self.parse_expr_statement(),
         };
 
-        stmt.map_err(|e| {
+        stmt.inspect_err(|_| {
             // Advance until next semicolon
             while let Ok(token) = self.get_token() {
                 if token == Token::Semicolon {
                     break;
                 }
             }
-            e
         })
     }
 
@@ -99,16 +98,19 @@ impl<'a> Parser<'a> {
                 let condition = self.parse_expression(Precedence::Lowest)?.boxed();
                 self.consume_expected(Token::RightParen)?;
                 let then_block = self.parse_block()?;
-                let else_block = (self.peek_token()? == &Token::Else).then_some({
-                    self.get_token().unwrap();
-                    self.parse_block()?
-                });
+                let else_block = match self.tokens.peek() {
+                    Some(Token::Else) => {
+                        self.get_token().unwrap();
+                        Some(self.parse_block()?)
+                    }
+                    _ => None,
+                };
                 Expr::IfCondition { condition, then_block, else_block }
             }
             Token::Function => {
                 self.consume_expected(Token::LeftParen)?;
                 let mut params = vec![];
-                while !self.consume_expected(Token::RightParen).is_ok() {
+                while self.consume_expected(Token::RightParen).is_err() {
                     params.push(self.consume_identifier()?);
                     if self.consume_expected(Token::RightParen).is_ok() {
                         break;
@@ -127,7 +129,7 @@ impl<'a> Parser<'a> {
             if token == &Token::LeftParen {
                 self.get_token().unwrap();
                 let mut args = vec![];
-                while !self.consume_expected(Token::RightParen).is_ok() {
+                while self.consume_expected(Token::RightParen).is_err() {
                     args.push(self.parse_expression(Precedence::Lowest)?);
                     if self.consume_expected(Token::RightParen).is_ok() {
                         break;
@@ -210,7 +212,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_statements() {
+    fn parse_statements() {
         let input = "let x = 5;
 let y = true;
 x + 4;
@@ -231,7 +233,7 @@ return foobar;";
     }
 
     #[test]
-    fn test_parse_basic_expr() {
+    fn parse_basic_expr() {
         let input = "let y = (foobar + 5) * 2;";
         let a = Infix { op: Add, lh: Identifier("foobar".to_string()).boxed(), rh: Int(5).boxed() };
         let b = Infix { op: Mult, lh: a.boxed(), rh: Int(2).boxed() };
@@ -263,7 +265,7 @@ return foobar;";
     }
 
     #[test]
-    fn test_parse_operator_precedence() {
+    fn parse_operator_precedence() {
         let input = "4 * foo / 5 + - 2 * (bar / 3 - 1)";
         let lexer = Lexer::new(input);
         let ast: Ast = Parser::new(lexer).collect();
@@ -274,30 +276,41 @@ return foobar;";
     }
 
     #[test]
-    fn test_parse_if_else_expr() {
-        let input = "let max_value = if (x >= y) { x } else { y };";
-        let expected = vec![Ok(Statement::Let {
-            iden: "max_value".to_string(),
-            expr: IfCondition {
-                condition: Infix {
-                    op: Gte,
-                    lh: Identifier("x".to_string()).boxed(),
-                    rh: Identifier("y".to_string()).boxed(),
-                }
-                .boxed(),
-                then_block: Block(vec![Statement::Expression {
-                    expr: Identifier("x".to_string()),
-                }]),
-                else_block: Some(Block(vec![Statement::Expression {
-                    expr: Identifier("y".to_string()),
-                }])),
-            },
-        })];
+    fn parse_if_else_expr() {
+        let input = "let max_value = if (x >= y) { x } else { y }; if (10 > 1) { true / false; }";
+        let expected = vec![
+            Ok(Statement::Let {
+                iden: "max_value".to_string(),
+                expr: IfCondition {
+                    condition: Infix {
+                        op: Gte,
+                        lh: Identifier("x".to_string()).boxed(),
+                        rh: Identifier("y".to_string()).boxed(),
+                    }
+                    .boxed(),
+                    then_block: Block(vec![Statement::Expression {
+                        expr: Identifier("x".to_string()),
+                    }]),
+                    else_block: Some(Block(vec![Statement::Expression {
+                        expr: Identifier("y".to_string()),
+                    }])),
+                },
+            }),
+            Ok(Statement::Expression {
+                expr: IfCondition {
+                    condition: Infix { op: Gt, lh: Int(10).boxed(), rh: Int(1).boxed() }.boxed(),
+                    then_block: Block(vec![Statement::Expression {
+                        expr: Infix { op: Div, lh: Bool(true).boxed(), rh: Bool(false).boxed() },
+                    }]),
+                    else_block: None,
+                },
+            }),
+        ];
         test_parsed_eq(input, expected);
     }
 
     #[test]
-    fn test_parse_fn_expr() {
+    fn parse_fn_expr() {
         let input = "let add = fn(x, y) {
         return x + y;
     };";
@@ -315,7 +328,7 @@ return foobar;";
     }
 
     #[test]
-    fn test_parse_fn_expr_params() {
+    fn parse_fn_expr_params() {
         let input = "fn() {};
 fn(a) {};
 fn(x, y, z) {};";
@@ -337,7 +350,7 @@ fn(x, y, z) {};";
     }
 
     #[test]
-    fn test_parse_call_expr() {
+    fn parse_call_expr() {
         let input = "let sum = add(x, 2);
 myfunc(2 / 5, 3 * (y + 4));
 (fn(x, y) { x * y })(4, 5);";

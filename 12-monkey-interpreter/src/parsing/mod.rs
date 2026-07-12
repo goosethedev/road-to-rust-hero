@@ -32,6 +32,7 @@ pub enum Statement {
 #[derive(Debug, PartialEq, Eq)]
 pub struct Block(Vec<Statement>);
 
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug, PartialEq, Eq)]
 pub enum Expr {
     Prefix { op: PrefixOp, expr: Box<Expr> },
