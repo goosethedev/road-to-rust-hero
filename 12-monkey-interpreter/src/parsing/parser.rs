@@ -203,14 +203,18 @@ mod tests {
 
     type Ast = Vec<Result<Statement, ParserError>>;
 
+    fn test_parsed_eq(input: &str, expected: Ast) {
+        let lexer = Lexer::new(input);
+        let actual: Ast = Parser::new(lexer).collect();
+        assert_eq!(expected, actual);
+    }
+
     #[test]
     fn test_parse_statements() {
         let input = "let x = 5;
 let y = true;
 x + 4;
 return foobar;";
-        let lexer = Lexer::new(input);
-        let actual: Ast = Parser::new(lexer).collect();
         let expected = vec![
             Ok(Statement::Let { iden: "x".to_string(), expr: Int(5) }),
             Ok(Statement::Let { iden: "y".to_string(), expr: Bool(true) }),
@@ -223,28 +227,23 @@ return foobar;";
             }),
             Ok(Statement::Return { expr: Identifier("foobar".to_string()) }),
         ];
-        assert_eq!(expected, actual);
+        test_parsed_eq(input, expected);
     }
 
     #[test]
     fn test_parse_basic_expr() {
         let input = "let y = (foobar + 5) * 2;";
-        let lexer = Lexer::new(input);
-        let actual: Ast = Parser::new(lexer).collect();
-
         let a = Infix { op: Add, lh: Identifier("foobar".to_string()).boxed(), rh: Int(5).boxed() };
         let b = Infix { op: Mult, lh: a.boxed(), rh: Int(2).boxed() };
         let expected = vec![Ok(Statement::Let { iden: "y".to_string(), expr: b })];
-        assert_eq!(expected, actual);
+        test_parsed_eq(input, expected);
     }
 
     #[test]
     fn test_missing_identifier() {
         let input = "let (x + y)";
-        let lexer = Lexer::new(input);
-        let actual: Ast = Parser::new(lexer).collect();
         let expected = vec![Err(ParserError::MissingIdentifier)];
-        assert_eq!(expected, actual);
+        test_parsed_eq(input, expected);
     }
 
     #[test]
@@ -277,9 +276,6 @@ return foobar;";
     #[test]
     fn test_parse_if_else_expr() {
         let input = "let max_value = if (x >= y) { x } else { y };";
-        let lexer = Lexer::new(input);
-        let actual: Ast = Parser::new(lexer).collect();
-
         let expected = vec![Ok(Statement::Let {
             iden: "max_value".to_string(),
             expr: IfCondition {
@@ -297,7 +293,7 @@ return foobar;";
                 }])),
             },
         })];
-        assert_eq!(expected, actual);
+        test_parsed_eq(input, expected);
     }
 
     #[test]
@@ -305,9 +301,6 @@ return foobar;";
         let input = "let add = fn(x, y) {
         return x + y;
     };";
-        let lexer = Lexer::new(input);
-        let actual: Ast = Parser::new(lexer).collect();
-
         let expr = Infix {
             op: Add,
             lh: Identifier("x".to_string()).boxed(),
@@ -318,7 +311,7 @@ return foobar;";
         let fn_expr = FnExpr { params, body };
         let expected = vec![Ok(Statement::Let { iden: "add".to_string(), expr: fn_expr })];
 
-        assert_eq!(expected, actual);
+        test_parsed_eq(input, expected);
     }
 
     #[test]
@@ -326,8 +319,6 @@ return foobar;";
         let input = "fn() {};
 fn(a) {};
 fn(x, y, z) {};";
-        let lexer = Lexer::new(input);
-        let actual: Ast = Parser::new(lexer).collect();
 
         let expected = vec![
             Ok(Statement::Expression { expr: FnExpr { params: vec![], body: Block(vec![]) } }),
@@ -342,7 +333,7 @@ fn(x, y, z) {};";
             }),
         ];
 
-        assert_eq!(expected, actual);
+        test_parsed_eq(input, expected);
     }
 
     #[test]
@@ -350,8 +341,6 @@ fn(x, y, z) {};";
         let input = "let sum = add(x, 2);
 myfunc(2 / 5, 3 * (y + 4));
 (fn(x, y) { x * y })(4, 5);";
-        let lexer = Lexer::new(input);
-        let actual: Ast = Parser::new(lexer).collect();
 
         let expr = FnCall {
             callable: Identifier("add".to_string()).boxed(),
@@ -379,7 +368,6 @@ myfunc(2 / 5, 3 * (y + 4));
         let fn_call_3 = Statement::Expression { expr: FnCall { callable, args } };
 
         let expected = vec![Ok(fn_call_1), Ok(fn_call_2), Ok(fn_call_3)];
-
-        assert_eq!(expected, actual);
+        test_parsed_eq(input, expected);
     }
 }
