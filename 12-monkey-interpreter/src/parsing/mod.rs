@@ -22,14 +22,14 @@ pub enum ParserError {
     UnexpectedEof,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Statement {
     Let { iden: String, expr: Expr },
     Return { expr: Expr },
     Expression { expr: Expr },
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Block(Vec<Statement>);
 
 impl IntoIterator for Block {
@@ -42,7 +42,7 @@ impl IntoIterator for Block {
 }
 
 #[allow(clippy::enum_variant_names)]
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Expr {
     Prefix { op: PrefixOp, expr: Box<Expr> },
     Infix { op: InfixOp, lh: Box<Expr>, rh: Box<Expr> },

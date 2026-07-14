@@ -4,14 +4,14 @@ mod parsing;
 
 use std::io::Write;
 
-use crate::evaluate::eval;
+use crate::evaluate::{Environment, Object, eval};
 use crate::lexing::Lexer;
 use crate::parsing::Parser;
 
 const PROMPT: &str = ">> ";
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut global_scope = std::collections::HashMap::new();
+    let global_env = Environment::new();
     loop {
         // Print prompt
         print!("{}", PROMPT);
@@ -33,7 +33,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
 
         // Eval and print results
-        match eval(ast, &mut global_scope) {
+        match eval(ast, global_env.clone()) {
+            Ok(Object::Null) => {}
             Ok(obj) => println!("{obj}"),
             Err(e) => eprintln!("{e}"),
         }
