@@ -7,18 +7,23 @@ pub struct Parser<'a> {
     tokens: std::iter::Peekable<Lexer<'a>>,
 }
 
-impl<'a> Iterator for Parser<'a> {
-    type Item = Result<Statement, ParserError>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.tokens.peek().is_some().then_some(self.parse_statement())
-    }
-}
-
 impl<'a> Parser<'a> {
     pub fn new(lexer: Lexer<'a>) -> Self {
         let tokens = lexer.into_iter().peekable();
         Self { tokens }
+    }
+
+    pub fn parse(&mut self) -> Result<Vec<Statement>, Vec<ParserError>> {
+        let mut stmts = vec![];
+        let mut errors = vec![];
+        while self.tokens.peek().is_some() {
+            match self.parse_statement() {
+                Ok(s) => stmts.push(s),
+                Err(e) => errors.push(e),
+            }
+        }
+
+        if errors.is_empty() { Ok(stmts) } else { Err(errors) }
     }
 
     fn parse_statement(&mut self) -> Result<Statement, ParserError> {
@@ -203,12 +208,10 @@ mod tests {
     use crate::lexing::Lexer;
     use crate::parsing::{Block, Expr::*, InfixOp::*};
 
-    type Ast = Vec<Result<Statement, ParserError>>;
-
-    fn test_parsed_eq(input: &str, expected: Ast) {
+    fn test_parsing(input: &str, expected: Result<Vec<Statement>, Vec<ParserError>>) {
         let lexer = Lexer::new(input);
-        let actual: Ast = Parser::new(lexer).collect();
-        assert_eq!(expected, actual);
+        let result = Parser::new(lexer).parse();
+        assert_eq!(expected, result);
     }
 
     #[test]
@@ -218,18 +221,18 @@ let y = true;
 x + 4;
 return foobar;";
         let expected = vec![
-            Ok(Statement::Let { iden: "x".to_string(), expr: Int(5) }),
-            Ok(Statement::Let { iden: "y".to_string(), expr: Bool(true) }),
-            Ok(Statement::Expression {
+            Statement::Let { iden: "x".to_string(), expr: Int(5) },
+            Statement::Let { iden: "y".to_string(), expr: Bool(true) },
+            Statement::Expression {
                 expr: Infix {
                     op: Add,
                     lh: Identifier("x".to_string()).boxed(),
                     rh: Int(4).boxed(),
                 },
-            }),
-            Ok(Statement::Return { expr: Identifier("foobar".to_string()) }),
+            },
+            Statement::Return { expr: Identifier("foobar".to_string()) },
         ];
-        test_parsed_eq(input, expected);
+        test_parsing(input, Ok(expected));
     }
 
     #[test]
@@ -237,15 +240,15 @@ return foobar;";
         let input = "let y = (foobar + 5) * 2;";
         let a = Infix { op: Add, lh: Identifier("foobar".to_string()).boxed(), rh: Int(5).boxed() };
         let b = Infix { op: Mult, lh: a.boxed(), rh: Int(2).boxed() };
-        let expected = vec![Ok(Statement::Let { iden: "y".to_string(), expr: b })];
-        test_parsed_eq(input, expected);
+        let expected = vec![Statement::Let { iden: "y".to_string(), expr: b }];
+        test_parsing(input, Ok(expected));
     }
 
     #[test]
     fn test_missing_identifier() {
         let input = "let (x + y)";
-        let expected = vec![Err(ParserError::MissingIdentifier)];
-        test_parsed_eq(input, expected);
+        let expected = vec![ParserError::MissingIdentifier];
+        test_parsing(input, Err(expected));
     }
 
     #[test]
@@ -268,18 +271,16 @@ return foobar;";
     fn parse_operator_precedence() {
         let input = "4 * foo / 5 + - 2 * (bar / 3 - 1)";
         let lexer = Lexer::new(input);
-        let ast: Ast = Parser::new(lexer).collect();
-        let actual: Vec<_> = ast.into_iter().map(|v| v.and_then(|s| Ok(s.to_string()))).collect();
-        let expected = vec![Ok("(((4 * foo) / 5) + ((-2) * ((bar / 3) - 1)))".to_string())];
-
-        assert_eq!(expected, actual);
+        let result = Parser::new(lexer).parse().expect("parsing should not fail");
+        let expected = vec!["(((4 * foo) / 5) + ((-2) * ((bar / 3) - 1)))".to_string()];
+        result.iter().map(|s| s.to_string()).zip(expected).for_each(|t| assert_eq!(t.0, t.1))
     }
 
     #[test]
     fn parse_if_else_expr() {
         let input = "let max_value = if (x >= y) { x } else { y }; if (10 > 1) { true / false; }";
         let expected = vec![
-            Ok(Statement::Let {
+            Statement::Let {
                 iden: "max_value".to_string(),
                 expr: IfCondition {
                     condition: Infix {
@@ -295,8 +296,8 @@ return foobar;";
                         expr: Identifier("y".to_string()),
                     }])),
                 },
-            }),
-            Ok(Statement::Expression {
+            },
+            Statement::Expression {
                 expr: IfCondition {
                     condition: Infix { op: Gt, lh: Int(10).boxed(), rh: Int(1).boxed() }.boxed(),
                     then_block: Block(vec![Statement::Expression {
@@ -304,9 +305,9 @@ return foobar;";
                     }]),
                     else_block: None,
                 },
-            }),
+            },
         ];
-        test_parsed_eq(input, expected);
+        test_parsing(input, Ok(expected));
     }
 
     #[test]
@@ -322,9 +323,9 @@ return foobar;";
         let body = Block(vec![Statement::Return { expr }]);
         let params = vec!["x".to_string(), "y".to_string()];
         let fn_expr = FnExpr { params, body };
-        let expected = vec![Ok(Statement::Let { iden: "add".to_string(), expr: fn_expr })];
+        let expected = vec![Statement::Let { iden: "add".to_string(), expr: fn_expr }];
 
-        test_parsed_eq(input, expected);
+        test_parsing(input, Ok(expected));
     }
 
     #[test]
@@ -334,19 +335,19 @@ fn(a) {};
 fn(x, y, z) {};";
 
         let expected = vec![
-            Ok(Statement::Expression { expr: FnExpr { params: vec![], body: Block(vec![]) } }),
-            Ok(Statement::Expression {
+            Statement::Expression { expr: FnExpr { params: vec![], body: Block(vec![]) } },
+            Statement::Expression {
                 expr: FnExpr { params: vec!["a".to_string()], body: Block(vec![]) },
-            }),
-            Ok(Statement::Expression {
+            },
+            Statement::Expression {
                 expr: FnExpr {
                     params: vec!["x".to_string(), "y".to_string(), "z".to_string()],
                     body: Block(vec![]),
                 },
-            }),
+            },
         ];
 
-        test_parsed_eq(input, expected);
+        test_parsing(input, Ok(expected));
     }
 
     #[test]
@@ -380,7 +381,7 @@ myfunc(2 / 5, 3 * (y + 4));
         let args = vec![Int(4), Int(5)];
         let fn_call_3 = Statement::Expression { expr: FnCall { callable, args } };
 
-        let expected = vec![Ok(fn_call_1), Ok(fn_call_2), Ok(fn_call_3)];
-        test_parsed_eq(input, expected);
+        let expected = vec![fn_call_1, fn_call_2, fn_call_3];
+        test_parsing(input, Ok(expected));
     }
 }

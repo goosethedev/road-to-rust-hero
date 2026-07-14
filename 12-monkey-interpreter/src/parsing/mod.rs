@@ -32,6 +32,15 @@ pub enum Statement {
 #[derive(Debug, PartialEq, Eq)]
 pub struct Block(Vec<Statement>);
 
+impl IntoIterator for Block {
+    type Item = Statement;
+    type IntoIter = std::vec::IntoIter<Statement>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, PartialEq, Eq)]
 pub enum Expr {
