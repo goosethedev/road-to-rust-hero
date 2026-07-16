@@ -2,12 +2,12 @@ use std::fmt;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Token {
-    // Control items
-    Illegal(String),
-
-    // Identifiers, literals, keywords
+    // Identifiers, literals
     Identifier(String),
     Int(String),
+    String(String),
+
+    // Keywords (reserved)
     Let,
     Function,
     If,
@@ -39,15 +39,21 @@ pub enum Token {
     NotEq,
     Lte,
     Gte,
+
+    // Errors (emitted to the parser)
+    InvalidChar(char),
+    InvalidIdentifier(String),
+    InvalidEscape(char),
+    UnterminatedString,
 }
 
 impl fmt::Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use Token::*;
         let out: &str = match self {
-            Illegal(s) => s,
             Identifier(s) => s,
             Int(n) => n,
+            String(s) => s,
             Let => "let",
             Function => "fn",
             If => "if",
@@ -73,6 +79,7 @@ impl fmt::Display for Token {
             Lte => "<=",
             Gte => ">=",
             NotEq => "!=",
+            _ => "NA",
         };
         write!(f, "{}", out)?;
         Ok(())

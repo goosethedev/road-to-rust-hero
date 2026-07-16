@@ -8,15 +8,13 @@ impl<'a> Iterator for Lexer<'a> {
     type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
-        // REFACTOR: this doesn't work with Peekable
-        // self.chars.skip_while(|ch| ch.is_whitespace());
-        while matches!(self.chars.peek(), Some(ch) if ch.is_whitespace()) {
-            self.chars.next().unwrap();
-        }
+        // Skip all whitespaces first
+        while self.chars.next_if(|ch| ch.is_whitespace()).is_some() {}
 
+        // Try to tokenize from next character
         self.chars.next().and_then(|ch| {
             self.try_tokenize_operator(ch)
-                .or_else(|| self.try_tokenize_as_illegal(ch))
+                .or_else(|| self.try_tokenize_string(ch))
                 .or_else(|| Some(self.tokenize_word(ch)))
         })
     }
@@ -30,16 +28,20 @@ impl<'a> Lexer<'a> {
 
     /// Tokenizes a complete valid alphanumeric word
     fn tokenize_word(&mut self, initial: char) -> Token {
+        if !is_valid_literal_char(initial) {
+            return Token::InvalidChar(initial);
+        }
+
         let mut word = String::from(initial);
 
-        while matches!(self.chars.peek(), Some(ch) if ch.is_alphanumeric() || *ch == '_') {
+        while matches!(self.chars.peek(), Some(ch) if is_valid_literal_char(*ch)) {
             word.push(self.chars.next().unwrap());
         }
 
-        if word.parse::<i64>().is_ok() {
+        if word.chars().all(|ch| ch.is_ascii_digit()) {
             return Token::Int(word);
-        } else if initial.is_numeric() {
-            return Token::Illegal(word);
+        } else if initial.is_ascii_digit() {
+            return Token::InvalidIdentifier(word);
         }
 
         match word.as_str() {
@@ -54,9 +56,40 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    /// Checks if is not a supported character.
-    fn try_tokenize_as_illegal(&self, ch: char) -> Option<Token> {
-        if ch.is_alphanumeric() || ch == '_' { None } else { Some(Token::Illegal(ch.to_string())) }
+    fn try_tokenize_string(&mut self, initial: char) -> Option<Token> {
+        (initial == '"').then(|| {
+            let mut content = String::new();
+
+            loop {
+                match self.chars.peek() {
+                    Some('"') => {
+                        self.chars.next();
+                        return Token::String(content);
+                    }
+                    // TODO: Add other escape sequences
+                    Some('\\') => {
+                        self.chars.next();
+                        let ch = match self.chars.peek().copied() {
+                            Some(ch) if ch == '\\' || ch == '"' => ch,
+                            Some('n') => '\n',
+                            Some('t') => '\t',
+                            Some('r') => '\r',
+                            Some(ch) => {
+                                // On invalid, advance until next quote and consume it
+                                while self.chars.next_if(|ch| *ch != '"').is_some() {}
+                                self.chars.next_if(|ch| *ch == '"');
+                                return Token::InvalidEscape(ch);
+                            }
+                            None => return Token::InvalidChar('\\'),
+                        };
+                        self.chars.next();
+                        content.push(ch);
+                    }
+                    Some(_) => content.push(self.chars.next().unwrap()),
+                    None => return Token::UnterminatedString,
+                }
+            }
+        })
     }
 
     /// Tries to tokenize an operator.
@@ -102,15 +135,25 @@ impl<'a> Lexer<'a> {
     }
 }
 
+#[inline]
+fn is_valid_literal_char(ch: char) -> bool {
+    ch.is_alphanumeric() || ch == '_'
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::lexing::token::Token::*;
 
+    fn test_lexing(input: &str, expected: &[Token]) {
+        let result: Vec<_> = Lexer::new(input).collect();
+        assert_eq!(expected, &result);
+    }
+
     #[test]
-    fn test_input_sum_statement() {
+    fn tokenize_input_sum_statement() {
         let input = "let six_seven = 6 + 7;";
-        let expected = vec![
+        let expected = &[
             Let,
             Identifier("six_seven".to_string()),
             Assign,
@@ -119,14 +162,13 @@ mod tests {
             Int("7".to_string()),
             Semicolon,
         ];
-        let actual: Vec<_> = Lexer::new(input).collect();
-        assert_eq!(actual, expected);
+        test_lexing(input, expected);
     }
 
     #[test]
-    fn test_input_math_statement() {
+    fn tokenize_input_math_statement() {
         let input = "let result = (7+8-3) / (2*3);";
-        let expected = vec![
+        let expected = &[
             Let,
             Identifier("result".into()),
             Assign,
@@ -145,12 +187,11 @@ mod tests {
             RightParen,
             Semicolon,
         ];
-        let actual: Vec<_> = Lexer::new(input).collect();
-        assert_eq!(actual, expected);
+        test_lexing(input, expected);
     }
 
     #[test]
-    fn test_input_complete() {
+    fn tokenize_input_complete() {
         let input = "let five = 5;
 let ten = 10;
 
@@ -160,7 +201,7 @@ x + y;
 
 let result = add(five, ten);";
 
-        let expected = vec![
+        let expected = &[
             Let,
             Identifier("five".into()),
             Assign,
@@ -198,48 +239,44 @@ let result = add(five, ten);";
             RightParen,
             Semicolon,
         ];
-        let actual: Vec<_> = Lexer::new(input).collect();
-        assert_eq!(actual, expected);
+        test_lexing(input, expected);
     }
 
     #[test]
-    fn test_input_illegal() {
-        let input = "[].@";
-        let expected = vec![
-            Illegal("[".to_string()),
-            Illegal("]".to_string()),
-            Illegal(".".to_string()),
-            Illegal("@".to_string()),
-        ];
-        let actual: Vec<_> = Lexer::new(input).collect();
-        assert_eq!(actual, expected);
+    fn tokenize_input_invalid_chars() {
+        let input = "^\\.@";
+        let expected = &[InvalidChar('^'), InvalidChar('\\'), InvalidChar('.'), InvalidChar('@')];
+        test_lexing(input, expected);
     }
 
     #[test]
-    fn test_illegal_identifier() {
+    fn tokenize_illegal_identifier() {
         let input = "let 23now = 4;";
         let expected =
-            vec![Let, Illegal("23now".to_string()), Assign, Int("4".to_string()), Semicolon];
-        let actual: Vec<_> = Lexer::new(input).collect();
-        assert_eq!(actual, expected);
+            &[Let, InvalidIdentifier("23now".to_string()), Assign, Int("4".to_string()), Semicolon];
+        test_lexing(input, expected);
     }
 
     #[test]
-    fn test_input_unicode() {
-        let input = "素敵🌠";
-        let expected = vec![Identifier("素敵".to_string()), Illegal("🌠".to_string())];
-        let actual: Vec<_> = Lexer::new(input).collect();
-        assert_eq!(actual, expected);
+    fn tokenize_input_unicode() {
+        let input = "298🥀素敵🌠";
+        let expected = &[
+            Int("298".to_string()),
+            InvalidChar('🥀'),
+            Identifier("素敵".to_string()),
+            InvalidChar('🌠'),
+        ];
+        test_lexing(input, expected);
     }
 
     #[test]
-    fn test_input_conditional_bool() {
+    fn tokenize_input_conditional_bool() {
         let input = "if (5 < 10) {
     return true;
 } else {
     return false;
 }";
-        let expected = vec![
+        let expected = &[
             If,
             LeftParen,
             Int("5".to_string()),
@@ -258,15 +295,14 @@ let result = add(five, ten);";
             Semicolon,
             RightBrace,
         ];
-        let actual: Vec<_> = Lexer::new(input).collect();
-        assert_eq!(actual, expected);
+        test_lexing(input, expected);
     }
 
     #[test]
-    fn test_input_comparison() {
+    fn tokenize_input_comparison() {
         let input = "10 == 10; 9 != 10;
 5 > 3; 7 >= 5; 2 <= 4; 1 < 9;";
-        let expected = vec![
+        let expected = &[
             Int("10".to_string()),
             Eq,
             Int("10".to_string()),
@@ -292,15 +328,47 @@ let result = add(five, ten);";
             Int("9".to_string()),
             Semicolon,
         ];
-        let actual: Vec<_> = Lexer::new(input).collect();
-        assert_eq!(actual, expected);
+        test_lexing(input, expected);
     }
 
     #[test]
-    fn test_input_random_characters() {
+    fn tokenize_input_random_characters() {
         let input = "!=/*3-";
-        let expected = vec![NotEq, Slash, Asterisk, Int("3".to_string()), Minus];
-        let actual: Vec<_> = Lexer::new(input).collect();
-        assert_eq!(actual, expected);
+        let expected = &[NotEq, Slash, Asterisk, Int("3".to_string()), Minus];
+        test_lexing(input, expected);
+    }
+
+    #[test]
+    fn tokenize_strings() {
+        let input = r#""foobar" == "tú y yo" "八九寺" >　"🥀🌠""#;
+        let expected = &[
+            String("foobar".to_string()),
+            Eq,
+            String("tú y yo".to_string()),
+            String("八九寺".to_string()),
+            Gt,
+            String("🥀🌠".to_string()),
+        ];
+        test_lexing(input, expected);
+    }
+
+    #[test]
+    fn tokenize_escape_sequences() {
+        let input = r#" "this \" here \\" where"that\h" "this \nthere\t"  "\"#;
+        let expected = &[
+            String("this \" here \\".to_string()),
+            Identifier("where".to_string()),
+            InvalidEscape('h'),
+            String("this \nthere\t".to_string()),
+            InvalidChar('\\'),
+        ];
+        test_lexing(input, expected);
+    }
+
+    #[test]
+    fn tokenize_unterminated_string() {
+        let input = r#"  "here you go   "#;
+        let expected = &[UnterminatedString];
+        test_lexing(input, expected);
     }
 }

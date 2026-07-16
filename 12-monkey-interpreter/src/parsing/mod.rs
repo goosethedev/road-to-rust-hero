@@ -48,6 +48,7 @@ pub enum Expr {
     Infix { op: InfixOp, lh: Box<Expr>, rh: Box<Expr> },
     Int(i64),
     Bool(bool),
+    String(String),
     Identifier(String),
     IfCondition { condition: Box<Expr>, then_block: Block, else_block: Option<Block> },
     FnExpr { params: Vec<String>, body: Block },
@@ -137,6 +138,7 @@ impl fmt::Display for Expr {
             Infix { op, lh, rh } => format!("({lh} {op} {rh})"),
             Int(n) => n.to_string(),
             Bool(b) => b.to_string(),
+            String(s) => s.clone(),
             Identifier(s) => s.clone(),
             IfCondition { condition, then_block, else_block } => {
                 if let Some(else_block) = else_block {

@@ -24,6 +24,7 @@ pub enum Object {
     Null,
     Int(i64),
     Bool(bool),
+    String(String),
     FnExpr(Box<FnObject>),
     Returned(Box<Object>),
 }
@@ -42,6 +43,7 @@ impl fmt::Display for Object {
             Null => "null",
             Int(n) => &n.to_string(),
             Bool(b) => &b.to_string(),
+            String(s) => s,
             FnExpr(e) => &e.to_string(),
             Returned(v) => &v.to_string(),
         };
@@ -149,6 +151,7 @@ fn eval_expr(expr: Expr, env: Environment) -> Result<Object, EvalError> {
     let obj = match expr {
         Expr::Int(n) => Object::Int(n),
         Expr::Bool(b) => bool_obj(b),
+        Expr::String(s) => Object::String(s),
         Expr::Identifier(k) => env.get(&k).ok_or(EvalError::UnknownIdentifier(k))?,
         Expr::Prefix { op, expr } => {
             let obj = eval_expr(*expr, env)?;
@@ -166,43 +169,48 @@ fn eval_expr(expr: Expr, env: Environment) -> Result<Object, EvalError> {
             }
         }
         Expr::Infix { op, lh, rh } => {
+            use EvalError::InvalidInfixOp;
+            use InfixOp::*;
+            use Object::{Int, String};
+
             let lh = eval_expr(*lh, env.clone())?;
             let rh = eval_expr(*rh, env.clone())?;
             match op {
-                InfixOp::Eq => bool_obj(lh == rh),
-                InfixOp::NotEq => bool_obj(lh != rh),
-                InfixOp::Add => match (&lh, &rh) {
-                    (&Object::Int(a), &Object::Int(b)) => Object::Int(a + b),
-                    _ => return Err(EvalError::InvalidInfixOp(InfixOp::Add, lh, rh)),
+                Eq => bool_obj(lh == rh),
+                NotEq => bool_obj(lh != rh),
+                Add => match (lh, rh) {
+                    (Int(a), Int(b)) => Int(a + b),
+                    (String(s1), String(s2)) => String(s1 + &s2),
+                    (lh, rh) => return Err(InvalidInfixOp(Add, lh, rh)),
                 },
-                InfixOp::Sub => match (&lh, &rh) {
-                    (&Object::Int(a), &Object::Int(b)) => Object::Int(a - b),
-                    _ => return Err(EvalError::InvalidInfixOp(InfixOp::Sub, lh, rh)),
+                Sub => match (lh, rh) {
+                    (Int(a), Int(b)) => Int(a - b),
+                    (lh, rh) => return Err(InvalidInfixOp(Sub, lh, rh)),
                 },
-                InfixOp::Mult => match (&lh, &rh) {
-                    (&Object::Int(a), &Object::Int(b)) => Object::Int(a * b),
-                    _ => return Err(EvalError::InvalidInfixOp(InfixOp::Mult, lh, rh)),
+                Mult => match (lh, rh) {
+                    (Int(a), Int(b)) => Int(a * b),
+                    (lh, rh) => return Err(InvalidInfixOp(Mult, lh, rh)),
                 },
-                InfixOp::Div => match (&lh, &rh) {
-                    (&Object::Int(a), &Object::Int(b)) => Object::Int(a / b),
-                    _ => return Err(EvalError::InvalidInfixOp(InfixOp::Div, lh, rh)),
+                Div => match (lh, rh) {
+                    (Int(a), Int(b)) => Int(a / b),
+                    (lh, rh) => return Err(InvalidInfixOp(Div, lh, rh)),
                 },
                 // TODO: maybe implement with PartialOrd?
-                InfixOp::Gt => match (&lh, &rh) {
-                    (&Object::Int(a), &Object::Int(b)) => bool_obj(a > b),
-                    _ => return Err(EvalError::InvalidInfixOp(InfixOp::Gt, lh, rh)),
+                Gt => match (lh, rh) {
+                    (Int(a), Int(b)) => bool_obj(a > b),
+                    (lh, rh) => return Err(InvalidInfixOp(Gt, lh, rh)),
                 },
-                InfixOp::Lt => match (&lh, &rh) {
-                    (&Object::Int(a), &Object::Int(b)) => bool_obj(a < b),
-                    _ => return Err(EvalError::InvalidInfixOp(InfixOp::Lt, lh, rh)),
+                Lt => match (lh, rh) {
+                    (Int(a), Int(b)) => bool_obj(a < b),
+                    (lh, rh) => return Err(InvalidInfixOp(Lt, lh, rh)),
                 },
-                InfixOp::Gte => match (&lh, &rh) {
-                    (&Object::Int(a), &Object::Int(b)) => bool_obj(a >= b),
-                    _ => return Err(EvalError::InvalidInfixOp(InfixOp::Gte, lh, rh)),
+                Gte => match (lh, rh) {
+                    (Int(a), Int(b)) => bool_obj(a >= b),
+                    (lh, rh) => return Err(InvalidInfixOp(Gte, lh, rh)),
                 },
-                InfixOp::Lte => match (&lh, &rh) {
-                    (&Object::Int(a), &Object::Int(b)) => bool_obj(a <= b),
-                    _ => return Err(EvalError::InvalidInfixOp(InfixOp::Lte, lh, rh)),
+                Lte => match (lh, rh) {
+                    (Int(a), Int(b)) => bool_obj(a <= b),
+                    (lh, rh) => return Err(InvalidInfixOp(Lte, lh, rh)),
                 },
             }
         }
@@ -447,6 +455,18 @@ ourFunction(20) + first + second;";
             let addTwo = newAdder(2);
             addTwo(2);";
         test_eval(input, Ok(Int(4)));
+    }
+
+    #[test]
+    fn eval_strings() {
+        let pairs = [
+            (r#""foobar""#, String("foobar".to_string())),
+            (r#""you and me""#, String("you and me".to_string())),
+            (r#""blur" + "🥀""#, String("blur🥀".to_string())),
+        ];
+        for (input, expected) in pairs {
+            test_eval(input, Ok(expected));
+        }
     }
 
     #[test]

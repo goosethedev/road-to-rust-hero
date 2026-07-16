@@ -85,6 +85,7 @@ impl<'a> Parser<'a> {
             Token::Int(n) => Expr::Int(n.parse()?),
             Token::True => Expr::Bool(true),
             Token::False => Expr::Bool(false),
+            Token::String(s) => Expr::String(s),
             Token::Bang => Expr::Prefix {
                 op: PrefixOp::Not,
                 expr: self.parse_expression(Precedence::Prefix)?.boxed(),
@@ -382,6 +383,23 @@ myfunc(2 / 5, 3 * (y + 4));
         let fn_call_3 = Statement::Expression { expr: FnCall { callable, args } };
 
         let expected = vec![fn_call_1, fn_call_2, fn_call_3];
+        test_parsing(input, Ok(expected));
+    }
+
+    #[test]
+    fn parse_string_expr() {
+        let input = r#""foobar"; "placeholder"; "blur" + "🥀""#;
+        let expected = vec![
+            Statement::Expression { expr: Expr::String("foobar".to_string()) },
+            Statement::Expression { expr: Expr::String("placeholder".to_string()) },
+            Statement::Expression {
+                expr: Expr::Infix {
+                    op: Add,
+                    lh: Expr::String("blur".to_string()).boxed(),
+                    rh: Expr::String("🥀".to_string()).boxed(),
+                },
+            },
+        ];
         test_parsing(input, Ok(expected));
     }
 }
