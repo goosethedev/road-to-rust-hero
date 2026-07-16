@@ -375,25 +375,25 @@ mod tests {
           }",
                 Int(10),
             ),
-            //   (
-            //       "
-            // let f = fn(x) {
-            //   return x;
-            //   x + 10;
-            // };
-            // f(10);",
-            //       Int(10),
-            //   ),
-            //   (
-            //       "
-            // let f = fn(x) {
-            //    let result = x + 10;
-            //    return result;
-            //    return 10;
-            // };
-            // f(10);",
-            //       Int(10),
-            //   ),
+            (
+                "
+            let f = fn(x) {
+              return x;
+              x + 10;
+            };
+            f(10);",
+                Int(10),
+            ),
+            (
+                "
+            let f = fn(x) {
+               let result = x + 10;
+               return result;
+               return 10;
+            };
+            f(10);",
+                Int(20),
+            ),
         ];
         for (input, expected) in pairs {
             test_eval(input, Ok(expected));
